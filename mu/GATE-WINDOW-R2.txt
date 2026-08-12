@@ -1,0 +1,14 @@
+# mu-inside atom-2r gate_window_r2.py -- train seed=4 held-out seed=11 N=300 eval_every=75 replay=0(sealed)
+# held-out set: 64 transitions, k=16, persist_rel(set)=persist_err=7.782960e-04 energy=1.385428e-03 persist_rel=0.561773
+  (a) norm lr=1e-3 ckpt err_rel: @0=0.565240 @75=0.685515 @150=0.964377 @225=4.073927 @300=0.944452
+  (a) held-out err_rel step0=0.565240 step300=0.944452 decrease: FAIL
+  (b) norm lr=0   ckpt err_rel: @0=0.565240 @75=0.565240 @150=0.565240 @225=0.565240 @300=0.565240
+  (b) lr=0 held-out EXACTLY flat: PASS
+  (c) trained final=0.944452 vs persistence null=0.561773 ratio=1.6812 beat<=0.95: FAIL
+  (d) old window  ckpt err_rel: @0=2.672796 @75=4.052842 @150=1.448792 @225=0.950060 @300=0.857214
+  (d) attribution: old-model final=0.857214 vs norm final=0.944452 (norm better: False)
+  (e) const null  ckpt err_rel: @0=1.000000 @75=1.289768 @150=1.290218 @225=1.290217 @300=1.290217
+  (e) trained final=0.944452 vs const final=1.290217 ratio=0.7320 beat<=0.95: PASS
+GW-3R OVERALL: FAIL -- 学習実在主張禁止 stays in force
+# NOTE: online GW-3 (gate_window.py) verdict is NOT superseded by this file;
+#       claim requires green here AND an idle-machine confirmation run.

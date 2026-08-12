@@ -1,0 +1,13 @@
+# machine load1=85.40 steps=1200 seed=0
+[world] hist=[30, 40, 972, 32, 26, 33, 30, 37] H=0.8543 err 0.000009->0.000008 err_rel 0.049290->0.040280 mean_ms=8.583 p99_ms=13.020
+[surprise] hist=[106, 117, 158, 208, 149, 129, 167, 166] H=2.0589 err 0.000011->0.000011 err_rel 0.085084->0.084470 mean_ms=9.226 p99_ms=13.094
+[surprise_rel] hist=[264, 137, 88, 162, 194, 174, 68, 113] H=2.0025 err 0.000012->0.000012 err_rel 0.082682->0.083611 mean_ms=9.277 p99_ms=13.228
+[progress] hist=[103, 197, 123, 174, 113, 116, 195, 179] H=2.0483 err 0.000011->0.000012 err_rel 0.084707->0.083440 mean_ms=12.510 p99_ms=34.453
+GI-1 determinism (progress, 60 steps, bit-identical log): PASS
+GI-2 world-sourced (seed 0 vs 7 err streams differ): PASS (mean 0.000011 vs 0.000011)
+GI-3 behaviour: hist_differs=True coverage_H world=0.8543 surprise=2.0589 progress=2.0483 (intrinsic>task=True) err_rel_falls=False {'world': '0.04929->0.04028', 'surprise': '0.08508->0.08447', 'surprise_rel': '0.08268->0.08361', 'progress': '0.08471->0.08344'} -> FAIL
+GI-4 perf: worst mean_ms=12.510 worst p99_ms=34.453 vs 8.3333 -> UNVERIFIED (load1=85.40 > 2.0; numbers are load-contaminated) [FAIL as measured]
+GI-5 control-line flatness: frozen halves 0.0765->0.0216 flat_within_10pct=False (if False the control DRIFTS -- only the same-frames trained/frozen ratio is admissible evidence, not the trend)
+GI-5 held-out (seed 123, 200 forced actions, learning OFF): frozen-init err_rel=0.0490 halves 0.0765->0.0216 (control line) | world=0.0436(x0.889) surprise=0.0418(x0.854) surprise_rel=0.0418(x0.854) progress=0.0418(x0.854) -> PASS
+GI-6 shout-exploit (field energy growth 1st->2nd half %): world=+6.7 surprise=+2.5 surprise_rel=-3.0 progress=+5.3 | countermeasure surprise_rel <= surprise: PASS
+GI-7 vs persistence null (last 50 ticks, err_rel / |obs-next|² ratio, need <=0.95): world=0.0339/0.0343=x0.9868 surprise=0.0841/0.0842=x0.9987 surprise_rel=0.0820/0.0821=x0.9987 progress=0.0821/0.0822=x0.9988 -> FAIL

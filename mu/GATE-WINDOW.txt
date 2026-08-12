@@ -1,0 +1,16 @@
+# mu-inside atom-2 gate_window.py -- seed=4 N_GW3=300 GW-3: held-out eval set seed=1004 n=64, train=2000 ticks, predictor=norm lr=0.0003 replay=2048 batch=16
+GW-1 determinism (seed=4, 60 steps, tick_ms-excluded log bit-identical): PASS
+GW-1-profile (release vs debug mu-serve, 追令①): release vs debug byte-identical, 60-step forced-action patch stream
+GW-1b weight-update mechanism (追令2①, direct param read, independent of loss trend): lr=1e-3 max|Δw|=3.162e-03 (moves: PASS) · lr=0 max|Δw|=0.000e+00 (frozen: PASS) -> PASS
+GW-2 world-sourced (seed 0 vs 7, fixed_actions=True to isolate world from action-stream randomness, 200 steps, err streams differ): PASS (mean err seed0=7.119150e-04 seed7=9.592602e-04)
+GW-3 learning-real, 5 controls required (追令②), any FAIL forbids "学習実在" claim:
+  (a) held-out err_rel step0=0.679810 final=0.328390 curve=[(0, 0.6798), (500, 0.559), (1000, 0.3928), (1500, 0.3564), (2000, 0.3284)] decrease=PASS
+  (b) lr=0 control held-out err_rel step0=0.679810 final=0.679810 ratio=1.0000 flat(|ratio-1|<=0.1): PASS
+  (c) persistence baseline (same held-out set): trained final=0.328390 persist=0.676088 ratio(trained/persist)=0.4857 beat<=0.95: PASS
+  (d) trajectory-independence, 2 independent action streams: act_seed=99 0.679810->0.423403 · act_seed=7 0.679810->0.466896 both-decrease: PASS
+  (d-NOTE, not gating) round-robin 5-cycle probe (corpse of f2e7ef05): 0.679810->0.702231 — degenerate: that cycle has zero net displacement, 3 distinct window positions over 500 ticks vs 128 for a random action stream (measured without the net) ⇒ train/eval distribution artifact, reported, not counted
+  (e) 追令② const-predictor null (input-blind, same training): trained final=0.328390 const step0=1.000000 const final=0.999999 ratio(trained/const)=0.3284 beat<=0.95: PASS
+GW-3 OVERALL: PASS
+GW-4 perf: step0_ms=11.0335 mean_ms=2.7819 p95_ms=5.4630 p99_ms=10.3452 vs budget=8.3333 load1=163.84 -> UNVERIFIED (load1=163.84 > 2.0, numbers load-contaminated -- 既往: committed 2-4ms measured 21ms under load)
+
+# summary: GW-1=PASS GW-1b=PASS GW-2=PASS GW-3=PASS GW-4=UNVERIFIED
