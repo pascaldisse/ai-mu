@@ -1,0 +1,25 @@
+    Finished `release` profile [optimized] target(s) in 0.22s
+     Running `/Users/pascaldisse/projects/magic-crystal-v9body/target/release/examples/rdirect_train_v9j`
+[v9j-smoke3] GAIA_V7_SKY_HISTORY reject=true — mandate expects true (set GAIA_V7_SKY_HISTORY=reject)
+[v9j-smoke3] res 128x72 K=3 steps, GAIA_V9_K=8 noise2noise draws (variance/8, teacher validator-only)
+[v9j-smoke3] WATCHDOG two-signal: score_streak=20 LOG-ONLY, resid_streak=20 ABORT, bar-res probe every 25 epochs at 640x480 (K=3 ref=64) ABORT on sparkle>=16
+[v9j-smoke3] CURE 4: overshoot_w=1 — above-ceiling gradient is 2*overshoot_w*(raw-cap)/n (pulls toward the ceiling), no longer zero (see module doc mechanism-hunt verdict)
+[v9j-smoke3] CURE 5: nohit_albedo_sq=0.00000001 — albedo~0/no-hit pixels bypass the clamp/ceiling entirely, ordinary 2*(raw-target)/n always active (autopsy grad-probe-fix section)
+[v9j-smoke3] POSE DIVERSITY POOL (v9c/v9e parity): orbit±30deg jitter±0.6 around 2 anchors (front-pivot family x2 draws/epoch, wide-anchor family x1 draw/epoch) + mirror unconditional (fixed) — fresh draws every epoch, CURE 3 winsorize_k=0 (OFF if 0)
+[v9j-smoke3] rendered mirror(train) + 2 VALIDATOR (orbit_-20, mirror — FIXED, held-out) pose sequences (128x72, teacher 64 VALIDATOR ONLY, pan_step=0.004, mirror_spp=4) in 1.7s
+[v9j-smoke3] UnetConfig widths=[24, 40, 64] n_scales=3 params≈163083
+[v9j-smoke3] MONITOR epoch -1 (fresh He-init): val sparkle 0.0/Mpx resid 0.1179 highlight_ratio 0.025 score=3.368 | mirror sparkle 0.0/Mpx resid 0.1194 highlight_ratio 0.020 (tgt sp<16 resid<0.035) *BEST->saved score_streak=0/20(LOG-ONLY) resid_streak=0/20(ABORT)
+[v9j-smoke3] FIRST BATCH mask check (epoch 0, pi=1 s=1): nohit_px(albedo)=3827/9216 nohit_effective(differs-from-CURE4)=0 | cross-check vs depth-hit-flag: false_hit_dark(albedo-mask says nohit, depth says REAL HIT)=25 false_miss_albedo(depth says miss, albedo-mask missed it — should be 0)=0
+[v9j-smoke3] epoch 0/3 n2n_mse=0.143371 lr=0.000100 pool_yaws=[-11.4,9.4,1.9] pool_ms=1550 hist_ms=5114 batch_ms=8336 nohit_px=35669/110592(32.25%) nohit_effective=66 (15.0s)
+[v9j-smoke3] MONITOR epoch 0: val sparkle 0.0/Mpx resid 0.1178 highlight_ratio 0.026 score=3.367 | mirror sparkle 0.0/Mpx resid 0.1193 highlight_ratio 0.020 (tgt sp<16 resid<0.035) *BEST->saved score_streak=0/20(LOG-ONLY) resid_streak=0/20(ABORT)
+[v9j-smoke3] FIRST BATCH mask check (epoch 1, pi=3 s=0): nohit_px(albedo)=3138/9216 nohit_effective(differs-from-CURE4)=40 | cross-check vs depth-hit-flag: false_hit_dark(albedo-mask says nohit, depth says REAL HIT)=3 false_miss_albedo(depth says miss, albedo-mask missed it — should be 0)=0
+[v9j-smoke3] epoch 1/3 n2n_mse=0.096924 lr=0.000075 pool_yaws=[26.6,15.3,11.3] pool_ms=1501 hist_ms=5071 batch_ms=8360 nohit_px=36404/110592(32.92%) nohit_effective=1472 (32.5s)
+[v9j-smoke3] MONITOR epoch 1: val sparkle 0.0/Mpx resid 0.1177 highlight_ratio 0.026 score=3.364 | mirror sparkle 0.0/Mpx resid 0.1192 highlight_ratio 0.021 (tgt sp<16 resid<0.035) *BEST->saved score_streak=0/20(LOG-ONLY) resid_streak=0/20(ABORT)
+[v9j-smoke3] FIRST BATCH mask check (epoch 2, pi=0 s=2): nohit_px(albedo)=3646/9216 nohit_effective(differs-from-CURE4)=614 | cross-check vs depth-hit-flag: false_hit_dark(albedo-mask says nohit, depth says REAL HIT)=14 false_miss_albedo(depth says miss, albedo-mask missed it — should be 0)=0
+[v9j-smoke3] epoch 2/3 n2n_mse=0.063051 lr=0.000060 pool_yaws=[-15.3,-29.4,-9.5] pool_ms=1769 hist_ms=5204 batch_ms=8427 nohit_px=29960/110592(27.09%) nohit_effective=7359 (50.5s)
+[v9j-smoke3] MONITOR epoch 2: val sparkle 0.0/Mpx resid 0.1176 highlight_ratio 0.028 score=3.360 | mirror sparkle 0.0/Mpx resid 0.1189 highlight_ratio 0.023 (tgt sp<16 resid<0.035) *BEST->saved score_streak=0/20(LOG-ONLY) resid_streak=0/20(ABORT)
+[v9j-smoke3] training completed all 3 epochs without watchdog abort (best score=3.360)
+[v9j-smoke3] training done in 53.0s (best score=3.360)
+[v9j-smoke3] wrote /Users/pascaldisse/projects/magic-crystal-v9body/packages/scrying-glass/data/rdirect-weights-v9j-smoke3.bin sha256=138b214121bc660a9e1d495d6b01e4890668455a1d682a75d2528e8e2e4cca1c
+[v9j-smoke3] wrote /Users/pascaldisse/projects/magic-crystal-v9body/packages/scrying-glass/data/rdirect-weights-v9j-smoke3-last.bin sha256=138b214121bc660a9e1d495d6b01e4890668455a1d682a75d2528e8e2e4cca1c
+[v9j-smoke3] wrote provenance. tag=v9j-smoke3 best=/Users/pascaldisse/projects/magic-crystal-v9body/packages/scrying-glass/data/rdirect-weights-v9j-smoke3.bin last=/Users/pascaldisse/projects/magic-crystal-v9body/packages/scrying-glass/data/rdirect-weights-v9j-smoke3-last.bin
