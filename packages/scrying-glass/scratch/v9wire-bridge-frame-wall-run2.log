@@ -1,0 +1,25 @@
+    Finished `release` profile [optimized] target(s) in 0.48s
+     Running `/Users/pascaldisse/projects/magic-crystal-v9wire/target/release/examples/rdirect_frame_wall`
+[wall] res 640x480 frames=40 warmup=8 sky_reject=false
+[wall] v7  (39-in split, GPU-native gather+forward_shared): median=16.747ms p95=17.683ms n=40
+[wall] v9  (41-in U-Net, CPU-built gather + forward_cpu_roundtrip): median=100.509ms p95=108.324ms n=40
+[wall] v9  GPU-only forward_gpu_ms (no trace/gather/readback, ITEM 1's own split): median=4.429ms p95=6.872ms
+[wall] v9  (41-in U-Net, GPU-native gather_v9 + readback + forward_cpu_roundtrip): median=46.416ms p95=55.683ms n=40
+[wall] v9g decomposition medians: trace=1.872ms gather=1.600ms readback=6.490ms forward=36.455ms
+[wall] v9g decomposition p95s:     trace=2.155ms gather=1.672ms readback=6.718ms forward=45.506ms
+[wall] v9  (41-in U-Net, GPU-native gather_v9 + readback + forward_gpu_with_output): median=28.429ms p95=32.094ms n=40
+[wall] v9gf decomposition medians: gather=1.612ms readback=6.531ms forward(cpu-wall)=18.530ms forward(gpu-only)=5.550ms fp16-glue=12.980ms
+[wall] v9gf decomposition p95s:     gather=1.674ms readback=6.829ms forward(cpu-wall)=22.096ms forward(gpu-only)=7.025ms
+[wall] v9  (41-in U-Net, ZERO-COPY BRIDGE: GPU gather + GPU pack + forward_gpu_bridged): median=15.367ms p95=15.725ms n=40
+[wall] v9zc decomposition medians: trace=1.548ms gather=1.586ms pack=0.719ms forward(wall)=11.511ms forward(gpu-only)=4.411ms
+[wall] v9zc decomposition p95s:     trace=1.617ms gather=1.741ms pack=0.849ms forward(wall)=11.649ms forward(gpu-only)=4.426ms
+[wall] v9zc forward(wall) sub-split medians: encode+commit=0.239ms wait=10.937ms readout=0.325ms (sum 11.502ms vs forward(wall) 11.511ms)
+
+[wall] ===== SUMMARY (640x480 unless GAIA_WALL_W/H overridden), 40 frames after 8 warmup =====
+  v7            full wall (production GPU-native gather+forward)          median   16.747 ms  p95   17.683 ms
+  v9-cpu-gather full wall (CPU-built gather + GPU forward)                 median  100.509 ms  p95  108.324 ms
+  v9-gpu-gather full wall (GPU-native gather + readback + GPU forward)     median   46.416 ms  p95   55.683 ms
+  v9-gpu-gather+fast-forward (GPU gather + readback + persistent-exec fwd) median   28.429 ms  p95   32.094 ms
+  v9-zero-copy-bridge (GPU gather + GPU pack + forward_gpu_bridged)        median   15.367 ms  p95   15.725 ms
+  v9 GPU-only forward alone (no trace/gather/readback)                     median    4.429 ms  p95    6.872 ms
+  60fps budget: 16.67 ms

@@ -1,0 +1,11 @@
+[package]
+name = "field"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+png = "0.17"
+
+[[bin]]
+name = "field-bench"
+path = "src/bin/bench.rs"

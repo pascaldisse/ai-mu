@@ -1,0 +1,11 @@
+[package]
+name = "field-glass"
+version = "0.1.0"
+edition = "2021"
+description = "field-glass — 場の生き窓: FieldRuntime live window (tao + softbuffer); click = 撃"
+license = "MIT"
+
+[dependencies]
+field = { path = "../field" }
+tao = { version = "0.35", features = ["rwh_06"] }
+softbuffer = "0.4"
