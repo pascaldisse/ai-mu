@@ -1,0 +1,19 @@
+[package]
+name = "field"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+png = "0.17"
+
+[[bin]]
+name = "field-bench"
+path = "src/bin/bench.rs"
+
+[[bin]]
+name = "mu-serve"
+path = "src/bin/mu_serve.rs"
+
+[[bin]]
+name = "field-view3"
+path = "src/bin/field_view3.rs"

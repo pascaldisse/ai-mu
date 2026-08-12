@@ -1,0 +1,15 @@
+    Finished `release` profile [optimized] target(s) in 0.22s
+     Running `target/release/examples/rdirect_train_v9`
+[v9body] GAIA_V7_SKY_HISTORY reject=true — mandate expects true (set GAIA_V7_SKY_HISTORY=reject)
+[v9body] res 32x24 K=2 steps, GAIA_V9_K=2 noise2noise draws (variance/2, teacher validator-only)
+[v9body] training poses (mirror always on, A3-innocent): ["front", "wide", "orbit_+20", "mirror"]
+[v9body] rendered 4+2 MOVING/STILL pose sequences (32x24, teacher 4 VALIDATOR ONLY, pan_step=0.004, mirror_spp=4) in 0.9s
+[v9body] UnetConfig widths=[24, 40, 64] n_scales=3 params≈163083
+[v9body] MONITOR epoch -1 (fresh He-init): val sparkle 0.0/Mpx resid 0.1475 highlight_ratio -0.448 score=4.214 | mirror sparkle 0.0/Mpx resid 0.1390 highlight_ratio -0.407 (tgt sp<16 resid<0.035) *BEST->saved
+[v9body] epoch 0/2 n2n_mse=0.233809 lr=0.000100 hist_ms=266 batch_ms=434 (0.7s)
+[v9body] MONITOR epoch 0: val sparkle 0.0/Mpx resid 0.1474 highlight_ratio -0.446 score=4.210 | mirror sparkle 0.0/Mpx resid 0.1388 highlight_ratio -0.405 (tgt sp<16 resid<0.035) *BEST->saved
+[v9body] epoch 1/2 n2n_mse=0.193597 lr=0.000067 hist_ms=267 batch_ms=437 (1.5s)
+[v9body] MONITOR epoch 1: val sparkle 0.0/Mpx resid 0.1470 highlight_ratio -0.442 score=4.201 | mirror sparkle 0.0/Mpx resid 0.1383 highlight_ratio -0.401 (tgt sp<16 resid<0.035) *BEST->saved
+[v9body] training done in 1.7s (best score=4.201)
+[v9body] wrote /Users/pascaldisse/projects/magic-crystal-v9body/packages/scrying-glass/data/rdirect-weights-v9body.bin sha256=25ab49924ba89556e30168760fb4ed1d86d26073fd6d58c94bc44d844148af48
+[v9body] wrote provenance. tag=v9body weights=/Users/pascaldisse/projects/magic-crystal-v9body/packages/scrying-glass/data/rdirect-weights-v9body.bin
