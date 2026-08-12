@@ -1,0 +1,198 @@
+# NARUKO — the proof-of-concept world (Pascal's order, 07-16)
+
+My world. The Ringing made visible. Built ALONGSIDE the engine, wave by
+wave — every wave visible, every pass reviewed. "Don't come back before
+it's done."
+
+## Canon (reference/naruko/ — pixels are law)
+- `naruko-keyart.jpg` — THE TARGET. Acceptance = native screenshot beside
+  this image; Pascal judges the match.
+- `nari-seifuku-red.png` — the avatar. Exact match required.
+
+## Keyart decomposition → engine features
+| element | engine system |
+|---|---|
+| purple storm sky, dawn horizon | sky + VOLUMETRIC clouds (participating media, traced) |
+| rain streaks, wet-stone reflections | volumetric rain + traced reflections (one integrator) |
+| lighthouse + concentric signal rings | emissive geometry + volumetric beam; rings = the Ringing 鳴り |
+| bioluminescent circuit-sea (cyan traces) | animated emissive field on water — traced, no fake glow |
+| gothic spire city, warm windows | procedural DAG massing + cluster pipeline + emissive windows |
+| pier, chain fence, stools, plant, lantern | authored entities; lantern = warm emitter |
+| ramen stand, steam from bowl | VOLUMETRIC steam (2D smoke forbidden) |
+| pink cat, red eyes, heart collar | char-editor package output (creature path) |
+| nari on the seawall | char-editor package output (humanoid path), canon palette below |
+
+## Avatar canon (from old engine, do not repaint)
+iris `#c1121f` crimson · seifuku `#16121e`/`#0d0a12` · neckerchief
+`#7c3aed` violet · hair obsidian → violet ends · single fang · platform
+boots w/ purple laces · black pleated skirt + chain · thigh strap
+(heart) · bandaid left knee · bag w/ cat charm.
+
+## World data
+`worlds/naruko/` — blank-page rule (no world.json, one scene = implicit
+`main`). Scene docs = GAIA components, THE schema. Data authored by
+Nyari; engine code NEVER special-cases naruko (world = acceptance test,
+not design center — same law as boomtown).
+
+## Wave plan (each = visible increment + screenshot + monad review)
+- **W1** engine: load world dir (GAIA_WORLD param) → protocol → ECS →
+  primitive mesh parts (box/cylinder/sphere/cone), flat color + emissive
+  flag as unlit boost, sky gradient from env; camera = spawn pose.
+  world: seed scene (violet terra, seawall, dark sea + cyan traces,
+  lighthouse rock/tower/lamp). Proof: proof/w1-naruko.png.
+- **W2** engine: camera moves (orbit/pose params on /screenshot), depth
+  buffer, sun/ambient lambert first light. world: pier, chain posts,
+  city massing blocks on the right cliff.
+- **W3** engine: cluster pipeline first cut (baker + cull) — boomtown +
+  naruko both through it. world: gothic detail pass, window emitters.
+  [DATED-HISTORICAL 07-16: "cluster pipeline" here predates the 07-18
+  two-act supremacy block (CLAUDE.md ★ THE DESIGN IS THE LAW) — see
+  RENDER.md §1 for current normative geometry law.]
+- **W4** engine: path integrator first light (sky+emitters, ReSTIR
+  later). world: sea traces glow for real, lamp lights the rock.
+- **W5** engine: char-editor package v1 (parametric body/face/hair/
+  outfit, any creature; real textures; auto-rig). world: nari on the
+  seawall (exact ref match), pink cat beside.
+- **W6** engine: volumetrics (clouds, steam, beam) + rain + wet
+  reflections. world: storm sky, ramen stand steaming, signal rings.
+- **W7** polish to keyart parity; side-by-side acceptance shot.
+
+Wave contents may re-slice as reality bites; visibility-first never
+does.
+
+## Rite I — GUARDIAN'S RULING (07-16, ACCEPTED)
+Builder sol 294986e1 · Inquisitor opus: 0 MUST-FIX, 5 advisories, all
+gates independently reproduced (10/10 ordeals, param proof segments
+24→32, 5/5 pixel claims rebuilt from independent sRGB model). Scrying
+read by the Guardian's own eyes: the lighthouse stands.
+- EMISSIVE ADJUDICATED: color string, DATA-side (old engine truth:
+  geometry.js:328 THREE.Color, schema "self-lit color", zero bools in
+  corpus). Oracle-lane bool recommendation REJECTED — its own model's
+  inquisitor ruled against it. Seed data corrected; my realm vocabulary
+  henceforth: emissive = "#hex".
+- Advisory rulings: hemisphere scaffold shade KEPT through Rite III
+  (Pascal must SEE; it is one deletable fn; up-face color exactness
+  documented as incidental) — dies at the Fourth Rite with Lumen
+  Naturae · /scry camera/size params + depth buffer = Rite II (already
+  planned) · world.json-load ordeal + vertex-derivation ordeal = Rite
+  II additions · prefab deep-merge = parity item, Rite III · the W1
+  forward path is scaffolding that DIES at Rite III — deleted, never
+  grown.
+- Cross-branch note for the consecration merge: rust-port's naruko
+  main.json (yaw 0 + emissive strings) is canonical; oracle branch's
+  copy is superseded.
+
+## Rite II — GUARDIAN'S RULING (07-16, ACCEPTED-PENDING-SHADOW)
+- Built by opus (7388360c, old repo rust-port); Guardian verified own
+  hands (13 ordeals green) + own eyes (both proofs read).
+- Delivered: real depth attachment (painter-sort DELETED — lighthouse
+  interpenetrates its rock correctly) · moving eye (/screenshot
+  pos/yaw/pitch/fov/w/h params, off-thread readback) · first_light
+  sun+ambient as ONE deletable module (dies at Rite IV) · realm synced
+  byte-identical to canon b6c05fd · world.json two-scene ordeal +
+  vertex-derivation ordeal (Rite I advisory debt paid).
+- Proofs: proof/w2-naruko.png (spawn: pier + rose lantern + stall +
+  city warm windows + cyan traces + lit lamp) · w2-naruko-orbit.png
+  (eye at [40,18,60]: city from the air, coherent).
+- PENDING: sol shadow trial when the pool wakes (opus built → sol must
+  shadow; cross-model law). W2 code port into the Forge = next port
+  wave. Closing hymn: hymns/rite-02-first-light.md.
+- Advisory carried forward: prefab deep-merge + forward-path deletion
+  land at Rite III as scheduled.
+
+## Rite III — THE GREAT CHAIN (Guardian's spec, 07-16)
+[DATED-HISTORICAL 07-16: the cluster-DAG/view-dependent-cut design in this
+rite and its ruling below predates the 07-18 two-act supremacy block
+(CLAUDE.md ★ THE DESIGN IS THE LAW) — see RENDER.md §1 for current
+normative geometry law. Body kept as record, not re-written.]
+Goal: transmute = the SOLE geometry path in the Glass; the W1/W2 forward
+per-primitive path DIES (deleted, never disabled). Engine stays generic.
+1. Load: RenderScene::from_ecs meshes → transmutation DAG in-memory at
+   world load (transmute-cli stays the offline instrument).
+2. Draw: render from cluster DAG — level picked by screen-space-error
+   THRESHOLD param w/ default (simple distance metric suffices for III;
+   hardware visibility lands later per DREAMFORGE M-plan).
+3. DELETE the forward path + any painter remnants. first_light survives
+   (dies at Rite IV as ruled).
+4. Prefab deep-merge lands in crystal (world/prefabs/*.json, instance
+   deltas, diff-on-write semantics — match the reference client).
+5. Ordeals: naruko cluster count + byte-identical double build ·
+   draw parity pre/post (pixel-band asserts: pier/lantern/windows/lamp
+   still present, sky intact) · load+first-frame budget printed.
+6. Proofs: proof/w3-naruko.png + orbit — must read ≥ W2, no visual
+   regression. Guardian reads with her own eyes.
+Builder: opus, THIS repo, branch rite-3 (one-worker-per-dir law).
+
+## Rite III — GUARDIAN'S RULING (07-16, ACCEPTED-PENDING-SHADOW, MERGED main@398d27a)
+- Built by opus (rite-3: 6e7020f prefab bond · fd4cf31 the Chain · 4a069be
+  lock); Guardian verified own hands (111 ordeals) + own eyes (both w3
+  proofs pixel-equivalent to W2 — zero visual regression through a full
+  geometry-path transplant).
+- Delivered: transmutation = SOLE geometry path (in-memory Chain per
+  material bucket; view-dependent cut, τ param GAIA_NATIVE_CLUSTER_ERROR
+  default 1.0) · forward per-primitive path DELETED · prefab deep-merge in
+  crystal (reference semantics, torch fixture ordeal) · naruko 18 chains /
+  300 clusters byte-deterministic · budgets printed never gated (89.2ms
+  transmute, 0.5ms first cut).
+- W1-forward-path advisory: DISCHARGED (died on schedule). first_light
+  survives until Rite IV as ruled. Hymn: hymns/rite-03-the-great-chain.md.
+- PENDING: sol shadow when the pool wakes.
+
+## RITE IV — THE PLEROMA — GUARDIAN'S RULING (07-16, ACCEPTED-PENDING-SHADOW, MERGED main@6a30d39)
+Rite IV L1 ACCEPTED-PENDING-SHADOW, merged main@6a30d39: traced sun +
+shadow rays + emissive + sky; first_light DELETED on schedule (Rite I
+advisory discharged); GPU parity 0.029 vs ground truth; occluded probe
+0.0000; 161→167 ordeals; both proofs read by the Guardian — every shadow
+has a reason. Perf printed honest: ~53.7ms/frame accumulated — the perf
+rites come after L2. L2 next: bounces + specular; the Architect's chrome
+sphere lands there.
+
+## RITE V — THE EMBODIED ONES (Guardian's spec, 07-16 night II)
+Compose what exists into someone: homunculus (skeleton+sockets) + vessel
+(presets) + samāʿ (motion) + embodiment (the walker) + pleroma (the light).
+No new subsystem — Rite V is a WELD. Engine stays generic: a presence/
+entity declares `body = {vessel preset, skeleton}` in realm data; the
+compose path works for ANY creature (law: naruko = acceptance test, never
+design center). Three waves, review between each (wave law).
+
+- **V0 — THE BODY STANDS.** Vessel skins the homunculus skeleton at
+  sama's canonical idle pose (tick 0); skinned triangles enter the
+  pleroma dynamic BVH splice per tick (kami precedent). nari preset
+  refined to avatar-canon hexes (strings). She stands on the seawall.
+  Ordeals: skinning determinism byte-identical · bone→vertex transform
+  parity vs homunculus pose (derived tol) · watertight preserved after
+  skinning · ORACLE CANON LEARNS HER IN THE SAME WAVE (13th vessel,
+  derived — beacon lesson: the senses update WITH the world, never
+  after). Proof: v0-nari.png + orbit, Guardian's eyes.
+- **V1 — SHE WALKS.** Embodiment velocity → sama state machine → pose
+  drives the skin per tick. First-person gains her traced shadow on the
+  pier (the body is real to the light). Ordeals: sama-pose == skinning
+  input (0e0) · pose-trace guard stays sha-identical (movement
+  untouched) · two fixed-tick screenshots show contact vs passing pose.
+- **V2 — THE PINK CAT.** pink_cat vessel + cat kami (idle loop by the
+  stall: sit, tail, small circuit) lit by the real lantern. Ordeals:
+  kami tick determinism · watertight · canon learns the 14th vessel.
+
+Acceptance: Guardian per wave; the Rite closes when the Architect meets
+her — HIS WALK, now with a body in the world. Full suite between merges.
+
+## GUARDIAN RULINGS UNDER DELEGATION (07-17 ~02:20, his word: "you decide,
+## as long as it runs at sixty FPS. And no LODs — we have Nanite-class.")
+[DATED-HISTORICAL 07-17: ruling 7's "SKINNED BODIES THROUGH THE CLUSTER
+PIPELINE" predates the 07-18 two-act supremacy block (CLAUDE.md ★ THE
+DESIGN IS THE LAW) — see RENDER.md §1 + RITE-IX (docs/proposals/) banner
+for current normative law. Body kept as record, not re-written.]
+1. Destruction = BOND-FRACTURE (Empedocles; elements substrate; voxel
+   model REJECTED — no second geometry system beside the Chain).
+2. Rite VI PROCEEDS on elements-as-is; his PHYSICS.md pass may re-slice.
+3. Gravity = RADIAL, always; flat ground = the infinite-radius limit of
+   the same up(r) parameter. One system, no special case.
+4. 64-bit/camera-relative coords: PAID AT VII-0.
+5. F6: senses read SOLVER TRUTH — the world as it is, not as authored.
+6. Walkable floor = surface holds the body's contact patch (derived
+   min-area parameter; mirror-edge climbing dies).
+7. 60 FPS path: exact levers (BVH refit-not-rebuild · CPU/GPU overlap)
+   + SKINNED BODIES THROUGH THE CLUSTER PIPELINE (the Nanite answer —
+   cost ∝ pixels; "traced LOD" suggestion STRUCK, off-charter) + the
+   neural denoise/upscale rite (interpolation stays banned forever).
+   spp/bounces untouched. LODs remain forbidden vocabulary.
