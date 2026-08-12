@@ -1,0 +1,124 @@
+{
+  "ablation_tag": "v9y-best",
+  "architecture": {
+    "in_channels": 41,
+    "kernel": 3,
+    "kind": "v9-body shape-parametric multi-scale conv U-Net (rdirect_unet.rs), CPU-trainable twin (rdirect_unet.rs::cpu)",
+    "n_scales": 3,
+    "out_channels": 3,
+    "params_approx": 163083,
+    "widths": [
+      24,
+      40,
+      64
+    ]
+  },
+  "artifact": "rdirect-weights-v9y.bin",
+  "checkpoint_kind": "BEST-SCORE — lowest 128x72 score=max(sp/40,resid/0.035) seen across all monitor calls, same convention v9..v9j used for their sole/best checkpoint",
+  "dataset": {
+    "crop_full": [
+      640,
+      480
+    ],
+    "low": [
+      64,
+      36
+    ],
+    "native": [
+      128,
+      72
+    ],
+    "realm": "naruko",
+    "train": [
+      "front-pivot-pool x2/epoch (CROP of virtual 640x480)",
+      "wide-anchor-pool x1/epoch (CROP of virtual 640x480)",
+      "mirror (fixed, unconditional, FULL-FRAME unchanged)"
+    ],
+    "val": [
+      "orbit_-20 (still, FIXED, held-out, FULL-FRAME)",
+      "mirror (still, FIXED, held-out, FULL-FRAME)"
+    ]
+  },
+  "gate": "NOT ordealed — v9k output only, no bar claimed passed",
+  "supersedes": "rdirect-weights-v9j.bin (v9k = v9j mechanisms UNCHANGED [two-signal watchdog, bar-res probe every 25, dual checkpoints, masked-px counters+first-batch guard, K=8, EMA, reject=true, overshoot_w=1, CURE5 depth-keyed] + pool draws now render CROPS of a virtual 640x480 frame instead of full 128x72 frames, see module doc)",
+  "training": {
+    "domain_fix": "settle()/run_monitor undo_log_demod the final step's output before every metric — v9c/v9e parity",
+    "epochs_requested": 600,
+    "init": "FRESH He-init (UnetWeights::new_random) — no conv-net analytic estimator-init exists yet, disclosed gap vs v8d's TIER1",
+    "k_draws": 8,
+    "loss": "whole-image MSE(net(step features), mean of K=8 independent draw radiances) — teacher NEVER in the loss, validator only (v8d TIER2 doctrine, ported); CURE 4 overshoot_w=1 (above-ceiling gradient 2*overshoot_w*(raw-cap)/n for albedo>0 pixels); CURE 5 (v9i, NEW) nohit_albedo_sq=0.00000001: albedo~0/no-hit pixels bypass clamp/ceiling entirely, ordinary 2*(raw-target)/n always active (autopsy grad-probe-fix section)",
+    "lr0": 0.00009999999747378752,
+    "pose_diversity": {
+      "anchors": [
+        "front-pivot (x2 draws/epoch)",
+        "wide-anchor (x1 draw/epoch)"
+      ],
+      "draws_per_epoch": 3,
+      "pool_jitter": 0.6000000238418579,
+      "pool_orbit_deg": 30.0
+    },
+    "ref_frames_validator_only": 64,
+    "resolution_train": [
+      128,
+      72
+    ],
+    "sky_history_reject_active": true,
+    "stop_reason": "resid_streak 20/20 (sustained resid rise)",
+    "unroll_steps": 3,
+    "v9r_dark_hit_loss_weight": {
+      "dark_w": 1.0,
+      "env": "GAIA_V9R_DARK_W",
+      "note": "multiplies whatever n2n grad already reached V9O's is_dark_hit px (default 1.0 = no-op, byte-identical); independent of the flag channel above, a pure loss-side reweight like overshoot_w/nohit_w — these px already carry honest K-draw n2n targets."
+    },
+    "v9r_degenerate_demod_flag_channel": {
+      "enabled": false,
+      "env": "GAIA_V9R_DEGEN_FLAG",
+      "extra_input_channels": 0,
+      "note": "representational cure (v9o/v9p/v9q were all loss/output-side surgery): one extra per-px input channel, 1.0 if no-hit OR dark-hit (V9O's class) else 0.0, so the net's own input marks the population whose demod divisor degenerated to identity (raw-radiance-scale taps) instead of leaving it invisible in feature space. Disabled (default) keeps in_channels byte-identical to v9k..v9q."
+    },
+    "v9u_converged_teacher": {
+      "chunk": 100,
+      "env": "GAIA_V9_TEACHER_SPP",
+      "note": "0 (default) = byte-identical K-draw n2n target_dl + ref_frames-spp validator teacher (v9k..v9t); >0 = target_dl AND val/mirror/bar-res-probe teachers become TRUE CONVERGED renders (rdirect_reference.rs-style chunked accumulation) at this spp — pool draws' own per-epoch teacher field stays ref_frames (unused by the training loop, left alone to protect epoch time)",
+      "teacher_spp": 512
+    },
+    "v9w_loss_domain": {
+      "domain": "",
+      "env": "GAIA_V9W_LOSS_DOMAIN",
+      "note": "'' (default) = byte-identical demod-log MSE (v9k..v9v, IRON LAW); 'display' = CURE4/CURE5 active-MSE/overshoot shape UNCHANGED in form but evaluated on out_dl/target_dl/ceiling_dl forward-transformed through undo_log_demod->linear_to_srgb (exposure=1.0, the write_png/eval presentation chain), gradient chain-ruled back to demod-log via ddisplay_ddl; verified every epoch's first batch by a 10-sample finite-difference check (abort on >1e-3 rel error). OVERRIDDEN/IGNORED when v9x_mixed_domain_loss.mix_on is true (below)."
+    },
+    "v9x_mixed_domain_loss": {
+      "env": "GAIA_V9X_MIX",
+      "mix_on": true,
+      "mix_raw": 0.8500000238418579,
+      "mix_resolved": 0.8500000238418579,
+      "note": "mix<0.0 (default) = feature OFF, byte-identical to the plain v9w_loss_domain branch above (IRON LAW); mix in [0.0,1.0] (clamped) blends d_out=mix*display_grad+(1-mix)*classic_grad per px, both EXISTING V9W/classic gradient shapes weighted-summed (no new math), OVERRIDING/IGNORING GAIA_V9W_LOSS_DOMAIN for the purpose of picking the grad; numeric finite-diff guard on the display component stays active whenever mix>0.0, same 1e-3 rel-err abort law as v9w_loss_domain."
+    },
+    "watchdog": {
+      "score_streak_LOG_ONLY": {
+        "note": "v9c/v9d/v9e's OLD sole abort trigger (score=max(sp/40,resid/0.035) at 128x72 > best*1.05 sustained) — kept for log continuity, NO LONGER aborts training by itself; evidence this round (scratch/v9e-train.log ep51-72) showed it can detonate on a handful of coarse low-res pixels while resid/highlight_ratio/render-res sparkle all kept improving",
+        "param": 20
+      },
+      "signal_a_resid_streak": {
+        "note": "abort if val resid stays > best_resid_ever*1.05 for this many CONSECUTIVE monitor calls — mirrors v9c/v9d/v9e's OLD score-streak shape, now on resid",
+        "param": 20
+      },
+      "signal_b_bar_res_probe": {
+        "abort_if_sparkle_at_least": 16.0,
+        "eval_k": 3,
+        "eval_ref_frames": 64,
+        "eval_res": [
+          640,
+          480
+        ],
+        "note": "periodic rdirect_v9_eval_640.rs-equivalent measurement on the LIVE ema net, one failing probe aborts immediately",
+        "probe_every_epochs": 25
+      }
+    },
+    "winsorized_targets": {
+      "note": "CURE 3 (v9e), DEFAULT OFF this round — v9e forensics (scratch/v9e-train.log) showed it target-neutral (reproduced v9c exactly), see module doc",
+      "winsor_k": 0.0
+    }
+  },
+  "weights_sha256": "b2dbf923bff2f507c4974105c5a4d7a871b7d1ccc67c7d40d4393334d691ec4c"
+}

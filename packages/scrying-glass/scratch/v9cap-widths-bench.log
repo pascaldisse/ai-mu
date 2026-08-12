@@ -1,0 +1,19 @@
+    Finished `release` profile [optimized] target(s) in 0.23s
+     Running `/Users/pascaldisse/projects/magic-crystal-v9body/target/release/examples/rdirect_v9_spike`
+v9-body STAGE 1 SPIKE — 640x480 render/output res, seed=0xd15eed
+config                           params        in_ch wall_med_ms  wall_p95  gpu_med_ms   gpu_p95 budget(gpu)
+A-tiny  widths=[12,20,32]         43095           41       29.00     33.27        2.94      5.56     PASS
+  sanity: 921600/921600 finite, 921593/921600 nonzero (untrained noise expected, not NaN/zero)
+B-small widths=[16,28,44]         79643           41       30.70     46.39        2.56      3.44     PASS
+  sanity: 921600/921600 finite, 921598/921600 nonzero (untrained noise expected, not NaN/zero)
+C-med   widths=[24,40,64]        163083           41       32.18     59.29        4.48      4.81     PASS
+  sanity: 921600/921600 finite, 921600/921600 nonzero (untrained noise expected, not NaN/zero)
+D-large widths=[40,72,112]       494171           41       47.68     53.84       11.61     11.98     OVER
+  sanity: 921600/921600 finite, 921600/921600 nonzero (untrained noise expected, not NaN/zero)
+E-cap1  widths=[28,48,80]        238087           41       34.64     46.98        5.40      5.90     PASS
+  sanity: 921600/921600 finite, 921600/921600 nonzero (untrained noise expected, not NaN/zero)
+F-cap2  widths=[32,56,96]        327491           41       35.05     52.91        4.79      5.21     PASS
+  sanity: 921600/921600 finite, 921600/921600 nonzero (untrained noise expected, not NaN/zero)
+
+(results/, table columns above: wall = runWithMTLCommandQueue CPU roundtrip; gpu = MTLCommandBuffer GPUStartTime/GPUEndTime on a compiled executable, own command buffer — budget verdict is evaluated on GPU-ONLY, matching rdirect_live.rs's own n0e finding that the wall is CPU-encode-dominated, not GPU-bound.)
+LARGEST CONFIG UNDER GPU BUDGET (9.07ms): F-cap2  widths=[32,56,96] (gpu median 4.79ms p95 5.21ms, 327491 params)

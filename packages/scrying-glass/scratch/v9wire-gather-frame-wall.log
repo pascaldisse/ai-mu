@@ -1,0 +1,20 @@
+    Finished `release` profile [optimized] target(s) in 0.22s
+     Running `/Users/pascaldisse/projects/magic-crystal-v9wire/target/release/examples/rdirect_frame_wall`
+[wall] res 640x480 frames=40 warmup=8 sky_reject=false
+[wall] v7  (39-in split, GPU-native gather+forward_shared): median=17.495ms p95=18.555ms n=40
+[wall] v9  (41-in U-Net, CPU-built gather + forward_cpu_roundtrip): median=105.493ms p95=111.678ms n=40
+[wall] v9  GPU-only forward_gpu_ms (no trace/gather/readback, ITEM 1's own split): median=4.579ms p95=7.278ms
+[wall] v9  (41-in U-Net, GPU-native gather_v9 + readback + forward_cpu_roundtrip): median=47.224ms p95=54.456ms n=40
+[wall] v9g decomposition medians: trace=1.854ms gather=1.740ms readback=7.000ms forward=36.658ms
+[wall] v9g decomposition p95s:     trace=2.176ms gather=1.924ms readback=8.388ms forward=43.607ms
+[wall] v9  (41-in U-Net, GPU-native gather_v9 + readback + forward_gpu_with_output): median=27.622ms p95=32.797ms n=40
+[wall] v9gf decomposition medians: gather=1.749ms readback=7.005ms forward(cpu-wall)=16.643ms forward(gpu-only)=4.750ms fp16-glue=11.894ms
+[wall] v9gf decomposition p95s:     gather=2.111ms readback=7.880ms forward(cpu-wall)=20.121ms forward(gpu-only)=5.954ms
+
+[wall] ===== SUMMARY (640x480 unless GAIA_WALL_W/H overridden), 40 frames after 8 warmup =====
+  v7            full wall (production GPU-native gather+forward)          median   17.495 ms  p95   18.555 ms
+  v9-cpu-gather full wall (CPU-built gather + GPU forward)                 median  105.493 ms  p95  111.678 ms
+  v9-gpu-gather full wall (GPU-native gather + readback + GPU forward)     median   47.224 ms  p95   54.456 ms
+  v9-gpu-gather+fast-forward (GPU gather + readback + persistent-exec fwd) median   27.622 ms  p95   32.797 ms
+  v9 GPU-only forward alone (no trace/gather/readback)                     median    4.579 ms  p95    7.278 ms
+  60fps budget: 16.67 ms
