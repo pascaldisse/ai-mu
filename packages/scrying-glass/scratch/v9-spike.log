@@ -1,0 +1,15 @@
+    Finished `release` profile [optimized] target(s) in 0.22s
+     Running `/Users/pascaldisse/projects/magic-crystal-v9body/target/release/examples/rdirect_v9_spike`
+v9-body STAGE 1 SPIKE — 640x480 render/output res, seed=0xd15eed
+config                           params        in_ch wall_med_ms  wall_p95  gpu_med_ms   gpu_p95 budget(gpu)
+A-tiny  widths=[12,20,32]         43095           41       24.95     28.73        3.44      5.00     PASS
+  sanity: 921600/921600 finite, 921593/921600 nonzero (untrained noise expected, not NaN/zero)
+B-small widths=[16,28,44]         79643           41       28.19     33.10        3.37      5.13     PASS
+  sanity: 921600/921600 finite, 921598/921600 nonzero (untrained noise expected, not NaN/zero)
+C-med   widths=[24,40,64]        163083           41       31.85     50.59        4.29      5.57     PASS
+  sanity: 921600/921600 finite, 921600/921600 nonzero (untrained noise expected, not NaN/zero)
+D-large widths=[40,72,112]       494171           41       45.51     50.95       11.36     11.40     OVER
+  sanity: 921600/921600 finite, 921600/921600 nonzero (untrained noise expected, not NaN/zero)
+
+(results/, table columns above: wall = runWithMTLCommandQueue CPU roundtrip; gpu = MTLCommandBuffer GPUStartTime/GPUEndTime on a compiled executable, own command buffer — budget verdict is evaluated on GPU-ONLY, matching rdirect_live.rs's own n0e finding that the wall is CPU-encode-dominated, not GPU-bound.)
+LARGEST CONFIG UNDER GPU BUDGET (9.07ms): C-med   widths=[24,40,64] (gpu median 4.29ms p95 5.57ms, 163083 params)

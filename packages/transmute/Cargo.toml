@@ -1,0 +1,24 @@
+[package]
+# TRUE NAME (GRIMOIRE, gaia-dreamforge repo): the offline pass is "the
+# transmutation". Package dir is `packages/transmute`; the crate is
+# `transmutation` (not `transmute`) because an unqualified `transmute()` free fn
+# would collide ergonomically with `std::mem::transmute` at every call site —
+# `transmutation::transmute()` stays unambiguous. The DAG is "the Great Chain"
+# (the b-word is forbidden vocabulary — DREAMFORGE.md).
+name = "transmutation"
+version = "0.1.0"
+edition = "2021"
+description = "DreamForge Transmutation — offline mesh → cluster-Great-Chain (RENDER.md R-milestone prep, CPU-only)"
+license = "MIT"
+
+[dependencies]
+meshopt = "0.6.2"        # BUY: meshlet build + simplifier (RENDER.md sole-pipeline ruling)
+# Sole partitioner; vendored via metis-sys. A build without it is unsupported.
+metis = "0.2.2"
+bytemuck = { version = "1", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+bincode = "1.3"
+
+[[bin]]
+name = "transmute-cli"
+path = "src/bin/transmute-cli.rs"

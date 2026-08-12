@@ -1,0 +1,22 @@
+    Finished `release` profile [optimized] target(s) in 0.72s
+     Running `/Users/pascaldisse/projects/magic-crystal-v9wire/target/release/examples/real_image_ordeal`
+[ordeal] weights=data/rdirect-weights-v9c.bin format=U-NET (GAIARD9) in_channels=41 widths=[24, 40, 64] n_scales=3 res 480x360 still=10 pan=6
+[ordeal] GAIA_V7_SKY_HISTORY reject=true (mandate expects true — set GAIA_V7_SKY_HISTORY=reject)
+[ordeal] orbit_-20 STILL: resid=0.10342 sparkle=0.0/Mpx (teacher 0.0) tvar=1.048e-5
+[ordeal] orbit_-20 PAN mid: resid_hist=0.10386 resid_single=0.10438 ghost_excess=-0.00052
+[ordeal] orbit_+40 STILL: resid=0.12303 sparkle=0.0/Mpx (teacher 0.0) tvar=1.262e-5
+[ordeal] orbit_+40 PAN mid: resid_hist=0.12250 resid_single=0.12363 ghost_excess=-0.00113
+[ordeal] wrote /Users/pascaldisse/projects/magic-crystal-v9wire/packages/scrying-glass/proof/neural-live/s25-unet-still.png
+[ordeal] wrote /Users/pascaldisse/projects/magic-crystal-v9wire/packages/scrying-glass/proof/neural-live/s25-unet-still-teacher.png
+[ordeal] wrote /Users/pascaldisse/projects/magic-crystal-v9wire/packages/scrying-glass/proof/neural-live/s25-unet-moving.png
+[ordeal] wrote /Users/pascaldisse/projects/magic-crystal-v9wire/packages/scrying-glass/proof/neural-live/s25-unet-moving-teacher.png
+
+[ordeal] ===== REAL-IMAGE BAR (U-NET BODY) ===== (280.1s)
+  resid_still         0.11322  bar    0.03500  FAIL  (distance to bar +0.07822)
+  sparkle_still       0.00000  bar   40.00000  PASS  (distance to bar -40.00000)
+  tvar_still          0.00001  bar    0.00050  PASS  (distance to bar -0.00049)
+  resid_move          0.11318  bar    0.06000  FAIL  (distance to bar +0.05318)
+  ghost_excess        0.00000  bar    0.01200  PASS  (distance to bar -0.01200)
+  (teacher sparkle 0.0/Mpx — reference floor)
+
+[ordeal] VERDICT: FAIL — NO stamp — the window is BLACK by law (real or black).
