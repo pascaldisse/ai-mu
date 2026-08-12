@@ -1,0 +1,235 @@
+    Finished `release` profile [optimized] target(s) in 0.45s
+     Running `/Users/pascaldisse/projects/magic-crystal-v9body/target/release/examples/rdirect_train_v9e`
+[v9e-forensics] GAIA_V7_SKY_HISTORY reject=true — mandate expects true (set GAIA_V7_SKY_HISTORY=reject)
+[v9e-forensics] res 128x72 K=3 steps, GAIA_V9_K=8 noise2noise draws (variance/8, teacher validator-only)
+[v9e-forensics] POSE DIVERSITY POOL (v9c parity): orbit±30deg jitter±0.6 around 2 anchors (front-pivot family x2 draws/epoch, wide-anchor family x1 draw/epoch) + mirror unconditional (fixed) — fresh draws every epoch, PLUS CURE 3 target winsorize_k=10, see module doc
+[v9e-forensics] rendered mirror(train) + 2 VALIDATOR (orbit_-20, mirror — FIXED, held-out) pose sequences (128x72, teacher 64 VALIDATOR ONLY, pan_step=0.004, mirror_spp=4) in 1.6s
+[v9e-forensics] UnetConfig widths=[24, 40, 64] n_scales=3 params≈163083
+[v9e-forensics] COORDS epoch -1 (fresh He-init): 0 peak px: []
+[v9e-forensics] MONITOR epoch -1 (fresh He-init): val sparkle 0.0/Mpx resid 0.1179 highlight_ratio 0.025 score=3.368 | mirror sparkle 0.0/Mpx resid 0.1194 highlight_ratio 0.020 (tgt sp<16 resid<0.035) *BEST->saved rising_streak=0/20
+[v9e-forensics] epoch 0/75 n2n_mse=0.142976 lr=0.000100 pool_yaws=[-11.4,9.4,1.9] pool_ms=1437 hist_ms=5058 batch_ms=8260 (14.8s)
+[v9e-forensics] COORDS epoch 0: 0 peak px: []
+[v9e-forensics] MONITOR epoch 0: val sparkle 0.0/Mpx resid 0.1178 highlight_ratio 0.026 score=3.367 | mirror sparkle 0.0/Mpx resid 0.1193 highlight_ratio 0.020 (tgt sp<16 resid<0.035) *BEST->saved rising_streak=0/20
+[v9e-forensics] epoch 1/75 n2n_mse=0.091253 lr=0.000099 pool_yaws=[26.6,15.3,11.3] pool_ms=1415 hist_ms=5066 batch_ms=8294 (32.1s)
+[v9e-forensics] COORDS epoch 1: 0 peak px: []
+[v9e-forensics] MONITOR epoch 1: val sparkle 0.0/Mpx resid 0.1177 highlight_ratio 0.026 score=3.364 | mirror sparkle 0.0/Mpx resid 0.1191 highlight_ratio 0.021 (tgt sp<16 resid<0.035) *BEST->saved rising_streak=0/20
+[v9e-forensics] epoch 2/75 n2n_mse=0.064245 lr=0.000097 pool_yaws=[-15.3,-29.4,-9.5] pool_ms=1444 hist_ms=5047 batch_ms=8008 (49.1s)
+[v9e-forensics] COORDS epoch 2: 0 peak px: []
+[v9e-forensics] MONITOR epoch 2: val sparkle 0.0/Mpx resid 0.1176 highlight_ratio 0.028 score=3.359 | mirror sparkle 0.0/Mpx resid 0.1189 highlight_ratio 0.023 (tgt sp<16 resid<0.035) *BEST->saved rising_streak=0/20
+[v9e-forensics] epoch 3/75 n2n_mse=0.065170 lr=0.000096 pool_yaws=[25.5,-14.4,9.6] pool_ms=1393 hist_ms=5066 batch_ms=8141 (66.2s)
+[v9e-forensics] COORDS epoch 3: 0 peak px: []
+[v9e-forensics] MONITOR epoch 3: val sparkle 0.0/Mpx resid 0.1174 highlight_ratio 0.029 score=3.354 | mirror sparkle 0.0/Mpx resid 0.1186 highlight_ratio 0.024 (tgt sp<16 resid<0.035) *BEST->saved rising_streak=0/20
+[v9e-forensics] epoch 4/75 n2n_mse=0.057418 lr=0.000095 pool_yaws=[-23.2,-5.2,30.0] pool_ms=1414 hist_ms=5066 batch_ms=8287 (83.5s)
+[v9e-forensics] COORDS epoch 4: 0 peak px: []
+[v9e-forensics] MONITOR epoch 4: val sparkle 0.0/Mpx resid 0.1172 highlight_ratio 0.031 score=3.348 | mirror sparkle 0.0/Mpx resid 0.1184 highlight_ratio 0.026 (tgt sp<16 resid<0.035) *BEST->saved rising_streak=0/20
+[v9e-forensics] epoch 5/75 n2n_mse=0.050700 lr=0.000094 pool_yaws=[-1.9,-30.0,5.6] pool_ms=1459 hist_ms=5062 batch_ms=7994 (100.6s)
+[v9e-forensics] COORDS epoch 5: 0 peak px: []
+[v9e-forensics] MONITOR epoch 5: val sparkle 0.0/Mpx resid 0.1170 highlight_ratio 0.033 score=3.342 | mirror sparkle 0.0/Mpx resid 0.1181 highlight_ratio 0.028 (tgt sp<16 resid<0.035) *BEST->saved rising_streak=0/20
+[v9e-forensics] epoch 6/75 n2n_mse=0.059362 lr=0.000093 pool_yaws=[-3.4,-16.4,26.5] pool_ms=1405 hist_ms=5067 batch_ms=8692 (118.3s)
+[v9e-forensics] COORDS epoch 6: 0 peak px: []
+[v9e-forensics] MONITOR epoch 6: val sparkle 0.0/Mpx resid 0.1168 highlight_ratio 0.034 score=3.336 | mirror sparkle 0.0/Mpx resid 0.1177 highlight_ratio 0.030 (tgt sp<16 resid<0.035) *BEST->saved rising_streak=0/20
+[v9e-forensics] epoch 7/75 n2n_mse=0.051899 lr=0.000091 pool_yaws=[15.1,-26.0,-26.1] pool_ms=1450 hist_ms=5107 batch_ms=9103 (136.9s)
+[v9e-forensics] COORDS epoch 7: 0 peak px: []
+[v9e-forensics] MONITOR epoch 7: val sparkle 0.0/Mpx resid 0.1165 highlight_ratio 0.036 score=3.329 | mirror sparkle 0.0/Mpx resid 0.1174 highlight_ratio 0.032 (tgt sp<16 resid<0.035) *BEST->saved rising_streak=0/20
+[v9e-forensics] epoch 8/75 n2n_mse=0.049085 lr=0.000090 pool_yaws=[-4.7,-27.3,-28.4] pool_ms=1288 hist_ms=5048 batch_ms=8009 (153.8s)
+[v9e-forensics] COORDS epoch 8: 0 peak px: []
+[v9e-forensics] MONITOR epoch 8: val sparkle 0.0/Mpx resid 0.1163 highlight_ratio 0.038 score=3.322 | mirror sparkle 0.0/Mpx resid 0.1171 highlight_ratio 0.034 (tgt sp<16 resid<0.035) *BEST->saved rising_streak=0/20
+[v9e-forensics] epoch 9/75 n2n_mse=0.054142 lr=0.000089 pool_yaws=[-16.6,16.3,-12.3] pool_ms=1174 hist_ms=5059 batch_ms=8383 (170.9s)
+[v9e-forensics] COORDS epoch 9: 0 peak px: []
+[v9e-forensics] MONITOR epoch 9: val sparkle 0.0/Mpx resid 0.1160 highlight_ratio 0.040 score=3.314 | mirror sparkle 0.0/Mpx resid 0.1168 highlight_ratio 0.036 (tgt sp<16 resid<0.035) *BEST->saved rising_streak=0/20
+[v9e-forensics] epoch 10/75 n2n_mse=0.052446 lr=0.000088 pool_yaws=[-7.2,-2.3,-6.6] pool_ms=1193 hist_ms=5011 batch_ms=8328 (187.9s)
+[v9e-forensics] COORDS epoch 10: 0 peak px: []
+[v9e-forensics] MONITOR epoch 10: val sparkle 0.0/Mpx resid 0.1157 highlight_ratio 0.042 score=3.306 | mirror sparkle 0.0/Mpx resid 0.1164 highlight_ratio 0.038 (tgt sp<16 resid<0.035) *BEST->saved rising_streak=0/20
+[v9e-forensics] epoch 11/75 n2n_mse=0.054491 lr=0.000087 pool_yaws=[-8.2,6.3,-23.2] pool_ms=1219 hist_ms=5022 batch_ms=8363 (205.0s)
+[v9e-forensics] COORDS epoch 11: 0 peak px: []
+[v9e-forensics] MONITOR epoch 11: val sparkle 0.0/Mpx resid 0.1154 highlight_ratio 0.044 score=3.298 | mirror sparkle 0.0/Mpx resid 0.1160 highlight_ratio 0.041 (tgt sp<16 resid<0.035) *BEST->saved rising_streak=0/20
+[v9e-forensics] epoch 12/75 n2n_mse=0.049665 lr=0.000086 pool_yaws=[16.1,-29.0,19.2] pool_ms=1227 hist_ms=5006 batch_ms=8152 (222.0s)
+[v9e-forensics] COORDS epoch 12: 0 peak px: []
+[v9e-forensics] MONITOR epoch 12: val sparkle 0.0/Mpx resid 0.1151 highlight_ratio 0.046 score=3.289 | mirror sparkle 0.0/Mpx resid 0.1156 highlight_ratio 0.043 (tgt sp<16 resid<0.035) *BEST->saved rising_streak=0/20
+[v9e-forensics] epoch 13/75 n2n_mse=0.045895 lr=0.000085 pool_yaws=[10.3,10.0,0.8] pool_ms=1195 hist_ms=4992 batch_ms=8394 (239.0s)
+[v9e-forensics] COORDS epoch 13: 0 peak px: []
+[v9e-forensics] MONITOR epoch 13: val sparkle 0.0/Mpx resid 0.1148 highlight_ratio 0.048 score=3.279 | mirror sparkle 0.0/Mpx resid 0.1152 highlight_ratio 0.046 (tgt sp<16 resid<0.035) *BEST->saved rising_streak=0/20
+[v9e-forensics] epoch 14/75 n2n_mse=0.052187 lr=0.000084 pool_yaws=[-12.1,17.2,15.3] pool_ms=1370 hist_ms=5023 batch_ms=8940 (256.9s)
+[v9e-forensics] COORDS epoch 14: 0 peak px: []
+[v9e-forensics] MONITOR epoch 14: val sparkle 0.0/Mpx resid 0.1144 highlight_ratio 0.051 score=3.269 | mirror sparkle 0.0/Mpx resid 0.1148 highlight_ratio 0.049 (tgt sp<16 resid<0.035) *BEST->saved rising_streak=0/20
+[v9e-forensics] epoch 15/75 n2n_mse=0.049353 lr=0.000083 pool_yaws=[-13.5,19.3,-9.5] pool_ms=1515 hist_ms=5018 batch_ms=8419 (274.3s)
+[v9e-forensics] COORDS epoch 15: 0 peak px: []
+[v9e-forensics] MONITOR epoch 15: val sparkle 0.0/Mpx resid 0.1141 highlight_ratio 0.053 score=3.259 | mirror sparkle 0.0/Mpx resid 0.1144 highlight_ratio 0.051 (tgt sp<16 resid<0.035) *BEST->saved rising_streak=0/20
+[v9e-forensics] epoch 16/75 n2n_mse=0.049810 lr=0.000082 pool_yaws=[26.1,-23.6,23.9] pool_ms=1456 hist_ms=5068 batch_ms=8459 (291.8s)
+[v9e-forensics] COORDS epoch 16: 0 peak px: []
+[v9e-forensics] MONITOR epoch 16: val sparkle 0.0/Mpx resid 0.1137 highlight_ratio 0.056 score=3.248 | mirror sparkle 0.0/Mpx resid 0.1139 highlight_ratio 0.054 (tgt sp<16 resid<0.035) *BEST->saved rising_streak=0/20
+[v9e-forensics] epoch 17/75 n2n_mse=0.049510 lr=0.000082 pool_yaws=[23.1,-6.2,-7.8] pool_ms=1512 hist_ms=5051 batch_ms=8536 (309.5s)
+[v9e-forensics] COORDS epoch 17: 0 peak px: []
+[v9e-forensics] MONITOR epoch 17: val sparkle 0.0/Mpx resid 0.1133 highlight_ratio 0.058 score=3.237 | mirror sparkle 0.0/Mpx resid 0.1135 highlight_ratio 0.057 (tgt sp<16 resid<0.035) *BEST->saved rising_streak=0/20
+[v9e-forensics] epoch 18/75 n2n_mse=0.046712 lr=0.000081 pool_yaws=[14.6,12.4,-18.9] pool_ms=1445 hist_ms=5066 batch_ms=8544 (327.0s)
+[v9e-forensics] COORDS epoch 18: 0 peak px: []
+[v9e-forensics] MONITOR epoch 18: val sparkle 0.0/Mpx resid 0.1129 highlight_ratio 0.061 score=3.226 | mirror sparkle 0.0/Mpx resid 0.1130 highlight_ratio 0.060 (tgt sp<16 resid<0.035) *BEST->saved rising_streak=0/20
+[v9e-forensics] epoch 19/75 n2n_mse=0.047569 lr=0.000080 pool_yaws=[24.0,-14.9,10.1] pool_ms=1504 hist_ms=5085 batch_ms=8668 (344.8s)
+[v9e-forensics] COORDS epoch 19: 0 peak px: []
+[v9e-forensics] MONITOR epoch 19: val sparkle 0.0/Mpx resid 0.1125 highlight_ratio 0.063 score=3.214 | mirror sparkle 0.0/Mpx resid 0.1126 highlight_ratio 0.063 (tgt sp<16 resid<0.035) *BEST->saved rising_streak=0/20
+[v9e-forensics] epoch 20/75 n2n_mse=0.046927 lr=0.000079 pool_yaws=[-17.7,2.4,-9.2] pool_ms=1511 hist_ms=5143 batch_ms=8658 (362.7s)
+[v9e-forensics] COORDS epoch 20: 0 peak px: []
+[v9e-forensics] MONITOR epoch 20: val sparkle 0.0/Mpx resid 0.1121 highlight_ratio 0.066 score=3.202 | mirror sparkle 0.0/Mpx resid 0.1121 highlight_ratio 0.066 (tgt sp<16 resid<0.035) *BEST->saved rising_streak=0/20
+[v9e-forensics] epoch 21/75 n2n_mse=0.043775 lr=0.000078 pool_yaws=[-26.7,-21.8,12.4] pool_ms=1422 hist_ms=5037 batch_ms=8656 (380.3s)
+[v9e-forensics] COORDS epoch 21: 0 peak px: []
+[v9e-forensics] MONITOR epoch 21: val sparkle 0.0/Mpx resid 0.1116 highlight_ratio 0.069 score=3.190 | mirror sparkle 0.0/Mpx resid 0.1116 highlight_ratio 0.069 (tgt sp<16 resid<0.035) *BEST->saved rising_streak=0/20
+[v9e-forensics] epoch 22/75 n2n_mse=0.048117 lr=0.000077 pool_yaws=[10.8,29.3,-16.4] pool_ms=1471 hist_ms=5054 batch_ms=8694 (398.1s)
+[v9e-forensics] COORDS epoch 22: 0 peak px: []
+[v9e-forensics] MONITOR epoch 22: val sparkle 0.0/Mpx resid 0.1112 highlight_ratio 0.072 score=3.177 | mirror sparkle 0.0/Mpx resid 0.1111 highlight_ratio 0.072 (tgt sp<16 resid<0.035) *BEST->saved rising_streak=0/20
+[v9e-forensics] epoch 23/75 n2n_mse=0.043201 lr=0.000077 pool_yaws=[16.8,8.5,4.2] pool_ms=1481 hist_ms=5110 batch_ms=8859 (416.1s)
+[v9e-forensics] COORDS epoch 23: 0 peak px: []
+[v9e-forensics] MONITOR epoch 23: val sparkle 0.0/Mpx resid 0.1108 highlight_ratio 0.075 score=3.165 | mirror sparkle 0.0/Mpx resid 0.1106 highlight_ratio 0.076 (tgt sp<16 resid<0.035) *BEST->saved rising_streak=0/20
+[v9e-forensics] epoch 24/75 n2n_mse=0.049572 lr=0.000076 pool_yaws=[-14.0,-9.2,14.2] pool_ms=1495 hist_ms=5105 batch_ms=8734 (434.0s)
+[v9e-forensics] COORDS epoch 24: 0 peak px: []
+[v9e-forensics] MONITOR epoch 24: val sparkle 0.0/Mpx resid 0.1103 highlight_ratio 0.078 score=3.151 | mirror sparkle 0.0/Mpx resid 0.1101 highlight_ratio 0.079 (tgt sp<16 resid<0.035) *BEST->saved rising_streak=0/20
+[v9e-forensics] epoch 25/75 n2n_mse=0.048888 lr=0.000075 pool_yaws=[-5.4,24.6,0.7] pool_ms=1489 hist_ms=5094 batch_ms=8708 (451.8s)
+[v9e-forensics] COORDS epoch 25: 0 peak px: []
+[v9e-forensics] MONITOR epoch 25: val sparkle 0.0/Mpx resid 0.1098 highlight_ratio 0.082 score=3.138 | mirror sparkle 0.0/Mpx resid 0.1095 highlight_ratio 0.083 (tgt sp<16 resid<0.035) *BEST->saved rising_streak=0/20
+[v9e-forensics] epoch 26/75 n2n_mse=0.047267 lr=0.000074 pool_yaws=[-8.8,17.3,26.4] pool_ms=1512 hist_ms=5101 batch_ms=8746 (469.7s)
+[v9e-forensics] COORDS epoch 26: 0 peak px: []
+[v9e-forensics] MONITOR epoch 26: val sparkle 0.0/Mpx resid 0.1093 highlight_ratio 0.087 score=3.123 | mirror sparkle 0.0/Mpx resid 0.1090 highlight_ratio 0.088 (tgt sp<16 resid<0.035) *BEST->saved rising_streak=0/20
+[v9e-forensics] epoch 27/75 n2n_mse=0.043224 lr=0.000074 pool_yaws=[-19.1,10.4,-18.0] pool_ms=1512 hist_ms=5070 batch_ms=8737 (487.6s)
+[v9e-forensics] COORDS epoch 27: 0 peak px: []
+[v9e-forensics] MONITOR epoch 27: val sparkle 0.0/Mpx resid 0.1088 highlight_ratio 0.092 score=3.109 | mirror sparkle 0.0/Mpx resid 0.1084 highlight_ratio 0.093 (tgt sp<16 resid<0.035) *BEST->saved rising_streak=0/20
+[v9e-forensics] epoch 28/75 n2n_mse=0.044908 lr=0.000073 pool_yaws=[-6.9,0.8,27.7] pool_ms=1460 hist_ms=5061 batch_ms=8752 (505.4s)
+[v9e-forensics] COORDS epoch 28: 0 peak px: []
+[v9e-forensics] MONITOR epoch 28: val sparkle 0.0/Mpx resid 0.1083 highlight_ratio 0.097 score=3.094 | mirror sparkle 0.0/Mpx resid 0.1079 highlight_ratio 0.098 (tgt sp<16 resid<0.035) *BEST->saved rising_streak=0/20
+[v9e-forensics] epoch 29/75 n2n_mse=0.049548 lr=0.000072 pool_yaws=[25.2,-13.6,22.1] pool_ms=1454 hist_ms=5048 batch_ms=8690 (523.1s)
+[v9e-forensics] COORDS epoch 29: 0 peak px: []
+[v9e-forensics] MONITOR epoch 29: val sparkle 0.0/Mpx resid 0.1077 highlight_ratio 0.103 score=3.078 | mirror sparkle 0.0/Mpx resid 0.1073 highlight_ratio 0.103 (tgt sp<16 resid<0.035) *BEST->saved rising_streak=0/20
+[v9e-forensics] epoch 30/75 n2n_mse=0.047332 lr=0.000071 pool_yaws=[27.9,-2.4,1.2] pool_ms=1320 hist_ms=5052 batch_ms=8661 (540.7s)
+[v9e-forensics] COORDS epoch 30: 0 peak px: []
+[v9e-forensics] MONITOR epoch 30: val sparkle 0.0/Mpx resid 0.1072 highlight_ratio 0.109 score=3.063 | mirror sparkle 0.0/Mpx resid 0.1067 highlight_ratio 0.110 (tgt sp<16 resid<0.035) *BEST->saved rising_streak=0/20
+[v9e-forensics] epoch 31/75 n2n_mse=0.046936 lr=0.000071 pool_yaws=[-23.9,-12.8,24.5] pool_ms=1211 hist_ms=5046 batch_ms=11339 (560.8s)
+[v9e-forensics] COORDS epoch 31: 0 peak px: []
+[v9e-forensics] MONITOR epoch 31: val sparkle 0.0/Mpx resid 0.1066 highlight_ratio 0.115 score=3.047 | mirror sparkle 0.0/Mpx resid 0.1061 highlight_ratio 0.116 (tgt sp<16 resid<0.035) *BEST->saved rising_streak=0/20
+[v9e-forensics] epoch 32/75 n2n_mse=0.047505 lr=0.000070 pool_yaws=[3.9,22.3,10.0] pool_ms=3346 hist_ms=8760 batch_ms=15388 (593.0s)
+[v9e-forensics] COORDS epoch 32: 0 peak px: []
+[v9e-forensics] MONITOR epoch 32: val sparkle 0.0/Mpx resid 0.1061 highlight_ratio 0.121 score=3.030 | mirror sparkle 0.0/Mpx resid 0.1055 highlight_ratio 0.122 (tgt sp<16 resid<0.035) *BEST->saved rising_streak=0/20
+[v9e-forensics] epoch 33/75 n2n_mse=0.047031 lr=0.000069 pool_yaws=[-14.4,-13.5,-25.2] pool_ms=3703 hist_ms=8389 batch_ms=15080 (624.3s)
+[v9e-forensics] COORDS epoch 33: 0 peak px: []
+[v9e-forensics] MONITOR epoch 33: val sparkle 0.0/Mpx resid 0.1055 highlight_ratio 0.128 score=3.013 | mirror sparkle 0.0/Mpx resid 0.1049 highlight_ratio 0.129 (tgt sp<16 resid<0.035) *BEST->saved rising_streak=0/20
+[v9e-forensics] epoch 34/75 n2n_mse=0.043480 lr=0.000069 pool_yaws=[18.4,-7.6,-8.6] pool_ms=3365 hist_ms=8695 batch_ms=12585 (653.1s)
+[v9e-forensics] COORDS epoch 34: 0 peak px: []
+[v9e-forensics] MONITOR epoch 34: val sparkle 0.0/Mpx resid 0.1048 highlight_ratio 0.135 score=2.996 | mirror sparkle 0.0/Mpx resid 0.1043 highlight_ratio 0.135 (tgt sp<16 resid<0.035) *BEST->saved rising_streak=0/20
+[v9e-forensics] epoch 35/75 n2n_mse=0.038526 lr=0.000068 pool_yaws=[-25.3,9.4,17.9] pool_ms=1284 hist_ms=5048 batch_ms=8643 (670.6s)
+[v9e-forensics] COORDS epoch 35: 0 peak px: []
+[v9e-forensics] MONITOR epoch 35: val sparkle 0.0/Mpx resid 0.1042 highlight_ratio 0.142 score=2.978 | mirror sparkle 0.0/Mpx resid 0.1037 highlight_ratio 0.142 (tgt sp<16 resid<0.035) *BEST->saved rising_streak=0/20
+[v9e-forensics] epoch 36/75 n2n_mse=0.044005 lr=0.000068 pool_yaws=[-9.3,16.8,-10.0] pool_ms=1297 hist_ms=5058 batch_ms=8679 (688.2s)
+[v9e-forensics] COORDS epoch 36: 0 peak px: []
+[v9e-forensics] MONITOR epoch 36: val sparkle 0.0/Mpx resid 0.1036 highlight_ratio 0.149 score=2.960 | mirror sparkle 0.0/Mpx resid 0.1030 highlight_ratio 0.149 (tgt sp<16 resid<0.035) *BEST->saved rising_streak=0/20
+[v9e-forensics] epoch 37/75 n2n_mse=0.043159 lr=0.000067 pool_yaws=[14.3,-23.3,16.0] pool_ms=1281 hist_ms=4985 batch_ms=8632 (705.6s)
+[v9e-forensics] COORDS epoch 37: 0 peak px: []
+[v9e-forensics] MONITOR epoch 37: val sparkle 0.0/Mpx resid 0.1030 highlight_ratio 0.157 score=2.941 | mirror sparkle 0.0/Mpx resid 0.1024 highlight_ratio 0.157 (tgt sp<16 resid<0.035) *BEST->saved rising_streak=0/20
+[v9e-forensics] epoch 38/75 n2n_mse=0.048236 lr=0.000066 pool_yaws=[18.7,-8.8,-23.9] pool_ms=1728 hist_ms=5064 batch_ms=9001 (723.9s)
+[v9e-forensics] COORDS epoch 38: 0 peak px: []
+[v9e-forensics] MONITOR epoch 38: val sparkle 0.0/Mpx resid 0.1023 highlight_ratio 0.165 score=2.923 | mirror sparkle 0.0/Mpx resid 0.1017 highlight_ratio 0.165 (tgt sp<16 resid<0.035) *BEST->saved rising_streak=0/20
+[v9e-forensics] epoch 39/75 n2n_mse=0.039601 lr=0.000066 pool_yaws=[18.8,-27.8,9.0] pool_ms=1701 hist_ms=5085 batch_ms=8609 (741.8s)
+[v9e-forensics] COORDS epoch 39: 0 peak px: []
+[v9e-forensics] MONITOR epoch 39: val sparkle 0.0/Mpx resid 0.1016 highlight_ratio 0.173 score=2.904 | mirror sparkle 0.0/Mpx resid 0.1010 highlight_ratio 0.174 (tgt sp<16 resid<0.035) *BEST->saved rising_streak=0/20
+[v9e-forensics] epoch 40/75 n2n_mse=0.044895 lr=0.000065 pool_yaws=[25.8,7.8,24.2] pool_ms=1556 hist_ms=5078 batch_ms=8744 (759.7s)
+[v9e-forensics] COORDS epoch 40: 0 peak px: []
+[v9e-forensics] MONITOR epoch 40: val sparkle 0.0/Mpx resid 0.1010 highlight_ratio 0.181 score=2.884 | mirror sparkle 0.0/Mpx resid 0.1004 highlight_ratio 0.182 (tgt sp<16 resid<0.035) *BEST->saved rising_streak=0/20
+[v9e-forensics] epoch 41/75 n2n_mse=0.042980 lr=0.000065 pool_yaws=[22.0,-16.3,16.2] pool_ms=1603 hist_ms=5146 batch_ms=8800 (777.8s)
+[v9e-forensics] COORDS epoch 41: 0 peak px: []
+[v9e-forensics] MONITOR epoch 41: val sparkle 0.0/Mpx resid 0.1003 highlight_ratio 0.189 score=2.865 | mirror sparkle 0.0/Mpx resid 0.0997 highlight_ratio 0.191 (tgt sp<16 resid<0.035) *BEST->saved rising_streak=0/20
+[v9e-forensics] epoch 42/75 n2n_mse=0.050213 lr=0.000064 pool_yaws=[26.7,0.6,-2.7] pool_ms=1659 hist_ms=5096 batch_ms=8698 (795.9s)
+[v9e-forensics] COORDS epoch 42: 0 peak px: []
+[v9e-forensics] MONITOR epoch 42: val sparkle 0.0/Mpx resid 0.0996 highlight_ratio 0.197 score=2.846 | mirror sparkle 0.0/Mpx resid 0.0990 highlight_ratio 0.199 (tgt sp<16 resid<0.035) *BEST->saved rising_streak=0/20
+[v9e-forensics] epoch 43/75 n2n_mse=0.042489 lr=0.000064 pool_yaws=[-11.9,16.9,12.2] pool_ms=1281 hist_ms=5025 batch_ms=8662 (813.4s)
+[v9e-forensics] COORDS epoch 43: 0 peak px: []
+[v9e-forensics] MONITOR epoch 43: val sparkle 0.0/Mpx resid 0.0989 highlight_ratio 0.205 score=2.826 | mirror sparkle 0.0/Mpx resid 0.0983 highlight_ratio 0.208 (tgt sp<16 resid<0.035) *BEST->saved rising_streak=0/20
+[v9e-forensics] epoch 44/75 n2n_mse=0.047094 lr=0.000063 pool_yaws=[-12.1,29.7,-18.3] pool_ms=1518 hist_ms=5045 batch_ms=8670 (831.1s)
+[v9e-forensics] COORDS epoch 44: 0 peak px: []
+[v9e-forensics] MONITOR epoch 44: val sparkle 0.0/Mpx resid 0.0982 highlight_ratio 0.214 score=2.807 | mirror sparkle 0.0/Mpx resid 0.0976 highlight_ratio 0.217 (tgt sp<16 resid<0.035) *BEST->saved rising_streak=0/20
+[v9e-forensics] epoch 45/75 n2n_mse=0.049224 lr=0.000062 pool_yaws=[24.1,22.8,-26.5] pool_ms=1460 hist_ms=5051 batch_ms=8660 (848.8s)
+[v9e-forensics] COORDS epoch 45: 0 peak px: []
+[v9e-forensics] MONITOR epoch 45: val sparkle 0.0/Mpx resid 0.0975 highlight_ratio 0.222 score=2.787 | mirror sparkle 0.0/Mpx resid 0.0969 highlight_ratio 0.226 (tgt sp<16 resid<0.035) *BEST->saved rising_streak=0/20
+[v9e-forensics] epoch 46/75 n2n_mse=0.043508 lr=0.000062 pool_yaws=[-7.9,-23.3,-26.9] pool_ms=1419 hist_ms=5059 batch_ms=8624 (866.4s)
+[v9e-forensics] COORDS epoch 46: 0 peak px: []
+[v9e-forensics] MONITOR epoch 46: val sparkle 0.0/Mpx resid 0.0969 highlight_ratio 0.231 score=2.767 | mirror sparkle 0.0/Mpx resid 0.0962 highlight_ratio 0.235 (tgt sp<16 resid<0.035) *BEST->saved rising_streak=0/20
+[v9e-forensics] epoch 47/75 n2n_mse=0.045986 lr=0.000061 pool_yaws=[17.8,-17.1,20.5] pool_ms=1247 hist_ms=5009 batch_ms=8640 (883.8s)
+[v9e-forensics] COORDS epoch 47: 0 peak px: []
+[v9e-forensics] MONITOR epoch 47: val sparkle 0.0/Mpx resid 0.0962 highlight_ratio 0.240 score=2.748 | mirror sparkle 0.0/Mpx resid 0.0955 highlight_ratio 0.244 (tgt sp<16 resid<0.035) *BEST->saved rising_streak=0/20
+[v9e-forensics] epoch 48/75 n2n_mse=0.043589 lr=0.000061 pool_yaws=[21.7,-5.3,-28.0] pool_ms=1264 hist_ms=5035 batch_ms=8597 (901.3s)
+[v9e-forensics] COORDS epoch 48: 0 peak px: []
+[v9e-forensics] MONITOR epoch 48: val sparkle 0.0/Mpx resid 0.0955 highlight_ratio 0.249 score=2.728 | mirror sparkle 0.0/Mpx resid 0.0948 highlight_ratio 0.253 (tgt sp<16 resid<0.035) *BEST->saved rising_streak=0/20
+[v9e-forensics] epoch 49/75 n2n_mse=0.045817 lr=0.000060 pool_yaws=[20.8,-1.9,16.2] pool_ms=1218 hist_ms=4970 batch_ms=8767 (918.7s)
+[v9e-forensics] COORDS epoch 49: 0 peak px: []
+[v9e-forensics] MONITOR epoch 49: val sparkle 0.0/Mpx resid 0.0948 highlight_ratio 0.258 score=2.708 | mirror sparkle 0.0/Mpx resid 0.0941 highlight_ratio 0.262 (tgt sp<16 resid<0.035) *BEST->saved rising_streak=0/20
+[v9e-forensics] epoch 50/75 n2n_mse=0.047203 lr=0.000060 pool_yaws=[14.6,27.3,18.0] pool_ms=1175 hist_ms=5001 batch_ms=8567 (935.9s)
+[v9e-forensics] COORDS epoch 50: 0 peak px: []
+[v9e-forensics] MONITOR epoch 50: val sparkle 0.0/Mpx resid 0.0941 highlight_ratio 0.267 score=2.689 | mirror sparkle 0.0/Mpx resid 0.0934 highlight_ratio 0.271 (tgt sp<16 resid<0.035) *BEST->saved rising_streak=0/20
+[v9e-forensics] epoch 51/75 n2n_mse=0.039716 lr=0.000060 pool_yaws=[8.4,-15.4,-28.8] pool_ms=1238 hist_ms=4954 batch_ms=8520 (953.1s)
+[v9e-forensics] COORDS epoch 51: 1 peak px: [(66, 38, 0.15324372)]
+[v9e-forensics] MONITOR epoch 51: val sparkle 108.5/Mpx resid 0.0934 highlight_ratio 0.277 score=2.713 | mirror sparkle 0.0/Mpx resid 0.0927 highlight_ratio 0.280 (tgt sp<16 resid<0.035) rising_streak=0/20
+[v9e-forensics] epoch 52/75 n2n_mse=0.043961 lr=0.000059 pool_yaws=[13.9,1.6,-2.9] pool_ms=1159 hist_ms=4927 batch_ms=8466 (970.2s)
+[v9e-forensics] COORDS epoch 52: 1 peak px: [(66, 38, 0.1615901)]
+[v9e-forensics] MONITOR epoch 52: val sparkle 108.5/Mpx resid 0.0927 highlight_ratio 0.287 score=2.713 | mirror sparkle 0.0/Mpx resid 0.0920 highlight_ratio 0.290 (tgt sp<16 resid<0.035) rising_streak=0/20
+[v9e-forensics] epoch 53/75 n2n_mse=0.042913 lr=0.000059 pool_yaws=[14.3,0.6,19.9] pool_ms=1197 hist_ms=4940 batch_ms=8594 (987.4s)
+[v9e-forensics] COORDS epoch 53: 1 peak px: [(66, 38, 0.16997251)]
+[v9e-forensics] MONITOR epoch 53: val sparkle 108.5/Mpx resid 0.0920 highlight_ratio 0.296 score=2.713 | mirror sparkle 0.0/Mpx resid 0.0913 highlight_ratio 0.299 (tgt sp<16 resid<0.035) rising_streak=0/20
+[v9e-forensics] epoch 54/75 n2n_mse=0.038429 lr=0.000058 pool_yaws=[11.4,-19.8,4.3] pool_ms=1496 hist_ms=5026 batch_ms=8790 (1005.2s)
+[v9e-forensics] COORDS epoch 54: 2 peak px: [(55, 34, 0.15191007), (66, 38, 0.17834505)]
+[v9e-forensics] MONITOR epoch 54: val sparkle 217.0/Mpx resid 0.0914 highlight_ratio 0.306 score=5.425 | mirror sparkle 0.0/Mpx resid 0.0906 highlight_ratio 0.309 (tgt sp<16 resid<0.035) rising_streak=1/20
+[v9e-forensics] epoch 55/75 n2n_mse=0.040718 lr=0.000058 pool_yaws=[17.7,10.6,-25.5] pool_ms=1434 hist_ms=5033 batch_ms=8618 (1022.8s)
+[v9e-forensics] COORDS epoch 55: 2 peak px: [(55, 34, 0.15793982), (66, 38, 0.18681803)]
+[v9e-forensics] MONITOR epoch 55: val sparkle 217.0/Mpx resid 0.0907 highlight_ratio 0.316 score=5.425 | mirror sparkle 0.0/Mpx resid 0.0899 highlight_ratio 0.318 (tgt sp<16 resid<0.035) rising_streak=2/20
+[v9e-forensics] epoch 56/75 n2n_mse=0.040727 lr=0.000057 pool_yaws=[0.1,7.6,15.2] pool_ms=1457 hist_ms=5040 batch_ms=8621 (1040.4s)
+[v9e-forensics] COORDS epoch 56: 2 peak px: [(55, 34, 0.16401377), (66, 38, 0.195295)]
+[v9e-forensics] MONITOR epoch 56: val sparkle 217.0/Mpx resid 0.0900 highlight_ratio 0.326 score=5.425 | mirror sparkle 0.0/Mpx resid 0.0892 highlight_ratio 0.328 (tgt sp<16 resid<0.035) rising_streak=3/20
+[v9e-forensics] epoch 57/75 n2n_mse=0.044439 lr=0.000057 pool_yaws=[-1.7,-17.3,-27.1] pool_ms=1404 hist_ms=5038 batch_ms=8918 (1058.4s)
+[v9e-forensics] COORDS epoch 57: 4 peak px: [(94, 6, 0.15347844), (94, 8, 0.15093046), (55, 34, 0.17003468), (66, 38, 0.20382497)]
+[v9e-forensics] MONITOR epoch 57: val sparkle 434.0/Mpx resid 0.0893 highlight_ratio 0.337 score=10.851 | mirror sparkle 0.0/Mpx resid 0.0886 highlight_ratio 0.337 (tgt sp<16 resid<0.035) rising_streak=4/20
+[v9e-forensics] epoch 58/75 n2n_mse=0.041909 lr=0.000056 pool_yaws=[19.6,-6.1,8.1] pool_ms=1416 hist_ms=5048 batch_ms=8660 (1076.0s)
+[v9e-forensics] COORDS epoch 58: 4 peak px: [(94, 6, 0.1584549), (94, 8, 0.15614992), (55, 34, 0.17601508), (66, 38, 0.21237814)]
+[v9e-forensics] MONITOR epoch 58: val sparkle 434.0/Mpx resid 0.0886 highlight_ratio 0.347 score=10.851 | mirror sparkle 0.0/Mpx resid 0.0879 highlight_ratio 0.347 (tgt sp<16 resid<0.035) rising_streak=5/20
+[v9e-forensics] epoch 59/75 n2n_mse=0.036610 lr=0.000056 pool_yaws=[10.8,-19.9,-24.9] pool_ms=1400 hist_ms=5046 batch_ms=8677 (1093.7s)
+[v9e-forensics] COORDS epoch 59: 5 peak px: [(94, 3, 0.15450525), (94, 6, 0.16347396), (94, 8, 0.16136998), (55, 34, 0.18204856), (66, 38, 0.22102821)]
+[v9e-forensics] MONITOR epoch 59: val sparkle 542.5/Mpx resid 0.0880 highlight_ratio 0.358 score=13.563 | mirror sparkle 0.0/Mpx resid 0.0872 highlight_ratio 0.356 (tgt sp<16 resid<0.035) rising_streak=6/20
+[v9e-forensics] epoch 60/75 n2n_mse=0.043271 lr=0.000056 pool_yaws=[-14.7,-24.5,-9.3] pool_ms=1428 hist_ms=5033 batch_ms=8604 (1111.3s)
+[v9e-forensics] COORDS epoch 60: 5 peak px: [(94, 3, 0.15934312), (94, 6, 0.16839924), (94, 8, 0.16641498), (55, 34, 0.18810144), (66, 38, 0.229687)]
+[v9e-forensics] MONITOR epoch 60: val sparkle 542.5/Mpx resid 0.0873 highlight_ratio 0.369 score=13.563 | mirror sparkle 0.0/Mpx resid 0.0865 highlight_ratio 0.366 (tgt sp<16 resid<0.035) rising_streak=7/20
+[v9e-forensics] epoch 61/75 n2n_mse=0.041554 lr=0.000055 pool_yaws=[-25.5,20.6,7.4] pool_ms=1481 hist_ms=5045 batch_ms=8596 (1128.9s)
+[v9e-forensics] COORDS epoch 61: 6 peak px: [(94, 3, 0.16428998), (94, 6, 0.17336667), (97, 6, 0.15312126), (94, 8, 0.17147848), (55, 34, 0.19425529), (66, 38, 0.23845088)]
+[v9e-forensics] MONITOR epoch 61: val sparkle 651.0/Mpx resid 0.0866 highlight_ratio 0.380 score=16.276 | mirror sparkle 0.0/Mpx resid 0.0858 highlight_ratio 0.376 (tgt sp<16 resid<0.035) rising_streak=8/20
+[v9e-forensics] epoch 62/75 n2n_mse=0.042453 lr=0.000055 pool_yaws=[11.7,1.5,-19.6] pool_ms=1462 hist_ms=5048 batch_ms=8632 (1146.6s)
+[v9e-forensics] COORDS epoch 62: 6 peak px: [(94, 3, 0.16968149), (94, 6, 0.17831942), (97, 6, 0.15700495), (94, 8, 0.17655483), (55, 34, 0.20036408), (66, 38, 0.24760231)]
+[v9e-forensics] MONITOR epoch 62: val sparkle 651.0/Mpx resid 0.0860 highlight_ratio 0.391 score=16.276 | mirror sparkle 0.0/Mpx resid 0.0851 highlight_ratio 0.386 (tgt sp<16 resid<0.035) rising_streak=9/20
+[v9e-forensics] epoch 63/75 n2n_mse=0.042498 lr=0.000054 pool_yaws=[-23.0,22.1,-4.0] pool_ms=1469 hist_ms=5040 batch_ms=8587 (1164.2s)
+[v9e-forensics] COORDS epoch 63: 6 peak px: [(94, 3, 0.17513093), (94, 6, 0.18328431), (97, 6, 0.16090828), (94, 8, 0.1816647), (55, 34, 0.20651865), (66, 38, 0.25683603)]
+[v9e-forensics] MONITOR epoch 63: val sparkle 651.0/Mpx resid 0.0853 highlight_ratio 0.402 score=16.276 | mirror sparkle 0.0/Mpx resid 0.0844 highlight_ratio 0.396 (tgt sp<16 resid<0.035) rising_streak=10/20
+[v9e-forensics] epoch 64/75 n2n_mse=0.039554 lr=0.000054 pool_yaws=[1.1,20.4,7.7] pool_ms=1461 hist_ms=5039 batch_ms=8629 (1181.8s)
+[v9e-forensics] COORDS epoch 64: 6 peak px: [(94, 3, 0.18053815), (94, 6, 0.18813485), (97, 6, 0.16475147), (94, 8, 0.18674305), (55, 34, 0.21261892), (66, 38, 0.26606706)]
+[v9e-forensics] MONITOR epoch 64: val sparkle 651.0/Mpx resid 0.0846 highlight_ratio 0.413 score=16.276 | mirror sparkle 0.0/Mpx resid 0.0838 highlight_ratio 0.406 (tgt sp<16 resid<0.035) rising_streak=11/20
+[v9e-forensics] epoch 65/75 n2n_mse=0.047495 lr=0.000054 pool_yaws=[-12.3,25.6,-14.9] pool_ms=1417 hist_ms=5037 batch_ms=8635 (1199.4s)
+[v9e-forensics] COORDS epoch 65: 6 peak px: [(94, 3, 0.18596125), (94, 6, 0.19293746), (97, 6, 0.1685892), (94, 8, 0.19187647), (55, 34, 0.21871248), (66, 38, 0.2757969)]
+[v9e-forensics] MONITOR epoch 65: val sparkle 651.0/Mpx resid 0.0840 highlight_ratio 0.425 score=16.276 | mirror sparkle 0.0/Mpx resid 0.0831 highlight_ratio 0.416 (tgt sp<16 resid<0.035) rising_streak=12/20
+[v9e-forensics] epoch 66/75 n2n_mse=0.046507 lr=0.000053 pool_yaws=[23.8,29.7,-6.6] pool_ms=1448 hist_ms=5042 batch_ms=8661 (1217.1s)
+[v9e-forensics] COORDS epoch 66: 6 peak px: [(94, 3, 0.19137198), (94, 6, 0.1967934), (97, 6, 0.172414), (94, 8, 0.19692695), (55, 34, 0.22474709), (66, 38, 0.28546503)]
+[v9e-forensics] MONITOR epoch 66: val sparkle 651.0/Mpx resid 0.0833 highlight_ratio 0.436 score=16.276 | mirror sparkle 0.0/Mpx resid 0.0824 highlight_ratio 0.426 (tgt sp<16 resid<0.035) rising_streak=13/20
+[v9e-forensics] epoch 67/75 n2n_mse=0.043102 lr=0.000053 pool_yaws=[19.2,26.5,0.8] pool_ms=1404 hist_ms=5038 batch_ms=8599 (1234.7s)
+[v9e-forensics] COORDS epoch 67: 6 peak px: [(94, 3, 0.19674978), (94, 6, 0.20067021), (97, 6, 0.17629293), (94, 8, 0.20070994), (55, 34, 0.23058599), (66, 38, 0.2950131)]
+[v9e-forensics] MONITOR epoch 67: val sparkle 651.0/Mpx resid 0.0827 highlight_ratio 0.448 score=16.276 | mirror sparkle 0.0/Mpx resid 0.0818 highlight_ratio 0.436 (tgt sp<16 resid<0.035) rising_streak=14/20
+[v9e-forensics] epoch 68/75 n2n_mse=0.040368 lr=0.000052 pool_yaws=[24.7,16.6,0.5] pool_ms=1445 hist_ms=5051 batch_ms=8612 (1252.3s)
+[v9e-forensics] COORDS epoch 68: 6 peak px: [(94, 3, 0.20199206), (94, 6, 0.20445967), (97, 6, 0.18019405), (94, 8, 0.204422), (55, 34, 0.23644215), (66, 38, 0.30454555)]
+[v9e-forensics] MONITOR epoch 68: val sparkle 651.0/Mpx resid 0.0821 highlight_ratio 0.459 score=16.276 | mirror sparkle 0.0/Mpx resid 0.0811 highlight_ratio 0.445 (tgt sp<16 resid<0.035) rising_streak=15/20
+[v9e-forensics] epoch 69/75 n2n_mse=0.045688 lr=0.000052 pool_yaws=[-17.0,25.3,-25.4] pool_ms=1424 hist_ms=5049 batch_ms=8721 (1270.0s)
+[v9e-forensics] COORDS epoch 69: 6 peak px: [(94, 3, 0.20729479), (94, 6, 0.208265), (97, 6, 0.1841828), (94, 8, 0.20818266), (55, 34, 0.2423979), (66, 38, 0.314286)]
+[v9e-forensics] MONITOR epoch 69: val sparkle 651.0/Mpx resid 0.0814 highlight_ratio 0.471 score=16.276 | mirror sparkle 0.0/Mpx resid 0.0804 highlight_ratio 0.456 (tgt sp<16 resid<0.035) rising_streak=16/20
+[v9e-forensics] epoch 70/75 n2n_mse=0.036739 lr=0.000052 pool_yaws=[-22.5,-27.0,-21.0] pool_ms=1431 hist_ms=5067 batch_ms=8570 (1287.6s)
+[v9e-forensics] COORDS epoch 70: 6 peak px: [(94, 3, 0.2118999), (94, 6, 0.21202248), (97, 6, 0.18819284), (94, 8, 0.21195823), (55, 34, 0.24847922), (66, 38, 0.3246104)]
+[v9e-forensics] MONITOR epoch 70: val sparkle 651.0/Mpx resid 0.0808 highlight_ratio 0.483 score=16.276 | mirror sparkle 0.0/Mpx resid 0.0798 highlight_ratio 0.466 (tgt sp<16 resid<0.035) rising_streak=17/20
+[v9e-forensics] epoch 71/75 n2n_mse=0.039320 lr=0.000051 pool_yaws=[12.8,13.3,12.0] pool_ms=1491 hist_ms=5031 batch_ms=8608 (1305.3s)
+[v9e-forensics] COORDS epoch 71: 7 peak px: [(94, 3, 0.21614838), (94, 6, 0.21582547), (97, 6, 0.1922501), (94, 8, 0.21574304), (47, 9, 0.15104753), (55, 34, 0.2546043), (66, 38, 0.3352661)]
+[v9e-forensics] MONITOR epoch 71: val sparkle 759.5/Mpx resid 0.0801 highlight_ratio 0.495 score=18.989 | mirror sparkle 0.0/Mpx resid 0.0791 highlight_ratio 0.477 (tgt sp<16 resid<0.035) rising_streak=18/20
+[v9e-forensics] epoch 72/75 n2n_mse=0.041928 lr=0.000051 pool_yaws=[-21.3,17.7,29.1] pool_ms=1473 hist_ms=5034 batch_ms=8633 (1322.9s)
+[v9e-forensics] COORDS epoch 72: 7 peak px: [(94, 3, 0.22035831), (94, 6, 0.21979046), (97, 6, 0.1962452), (94, 8, 0.21942413), (47, 9, 0.15676591), (55, 34, 0.26068735), (66, 38, 0.3458658)]
+[v9e-forensics] MONITOR epoch 72: val sparkle 759.5/Mpx resid 0.0795 highlight_ratio 0.507 score=18.989 | mirror sparkle 0.0/Mpx resid 0.0784 highlight_ratio 0.488 (tgt sp<16 resid<0.035) rising_streak=19/20
+[v9e-forensics] epoch 73/75 n2n_mse=0.036889 lr=0.000051 pool_yaws=[-1.5,26.5,-4.2] pool_ms=1453 hist_ms=5035 batch_ms=8619 (1340.5s)
+[v9e-forensics] COORDS epoch 73: 7 peak px: [(94, 3, 0.22456121), (94, 6, 0.22383082), (97, 6, 0.20031026), (94, 8, 0.22317073), (47, 9, 0.16243613), (55, 34, 0.26683542), (66, 38, 0.35545284)]
+[v9e-forensics] MONITOR epoch 73: val sparkle 759.5/Mpx resid 0.0789 highlight_ratio 0.519 score=18.989 | mirror sparkle 0.0/Mpx resid 0.0778 highlight_ratio 0.499 (tgt sp<16 resid<0.035) rising_streak=20/20
+[v9e-forensics] CURE 2 ABORT-ON-DETONATION: score exceeded best*1.05 for 20 consecutive monitor epochs (>= 20) at epoch 73 — stopping, keeping best (score=2.689)
+[v9e-forensics] training done in 1343.1s (best score=2.689)
+[v9e-forensics] wrote /Users/pascaldisse/projects/magic-crystal-v9body/packages/scrying-glass/data/rdirect-weights-v9e-forensics.bin sha256=53638bd9a42666cbde5e0e0705d7f5f04c707f30b21942c8953518a26966b40b
+[v9e-forensics] wrote provenance. tag=v9e-forensics weights=/Users/pascaldisse/projects/magic-crystal-v9body/packages/scrying-glass/data/rdirect-weights-v9e-forensics.bin
