@@ -1,0 +1,4 @@
+# 初撃 — a strike rings the plane (CONTRACT v1 grammar; 1065353216 = 1.0f32 bits)
+界 32 32 2 7
+撃 16 16 1065353216
+歩 60
