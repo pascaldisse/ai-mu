@@ -1,0 +1,12 @@
+    Finished `release` profile [optimized] target(s) in 0.22s
+     Running `/Users/pascaldisse/projects/magic-crystal-v9wire/target/release/examples/rdirect_frame_wall`
+[wall] res 640x480 frames=40 warmup=8 sky_reject=true
+[wall] v7  (39-in split, GPU-native gather+forward_shared): median=17.430ms p95=17.891ms n=40
+[wall] v9  (41-in U-Net, CPU-built gather + forward_cpu_roundtrip): median=107.961ms p95=116.255ms n=40
+[wall] v9  GPU-only forward_gpu_ms (no trace/gather/readback, ITEM 1's own split): median=4.745ms p95=4.999ms
+
+[wall] ===== SUMMARY (640x480 unless GAIA_WALL_W/H overridden), 40 frames after 8 warmup =====
+  v7 full wall (production GPU-native gather+forward)  median   17.430 ms  p95   17.891 ms
+  v9 full wall (CPU-built gather + GPU forward)        median  107.961 ms  p95  116.255 ms
+  v9 GPU-only forward alone (no trace/gather/readback) median    4.745 ms  p95    4.999 ms
+  60fps budget: 16.67 ms

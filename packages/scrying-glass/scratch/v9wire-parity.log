@@ -1,0 +1,16 @@
+   Compiling scrying-glass v0.1.0 (/Users/pascaldisse/projects/magic-crystal-v9wire/packages/scrying-glass)
+    Finished `release` profile [optimized] target(s) in 10.86s
+     Running unittests src/lib.rs (/Users/pascaldisse/projects/magic-crystal-v9wire/target/release/deps/scrying_glass-a801376fe788704a)
+
+running 4 tests
+[cpu_grad_check] output_free=false seed=0x12345678: 65 params checked, max_rel_err=0.0719
+test rdirect_unet::cpu_grad_check::gradients_match_finite_difference_same_res ... ok
+[cpu_grad_check] output_free=true seed=0x99991111: 72 params checked, max_rel_err=0.0013
+test rdirect_unet::cpu_grad_check::gradients_match_finite_difference_free_output_res ... ok
+[gpu_cpu_parity] output_free=true seed=0xf4ee0057 n=2016: max_abs=1.332e-4 max_rel=3.777e-2 mean_abs=1.776e-5 (bar REL_TOL=1.0e-2 ABS_TOL=5.0e-3)
+[gpu_cpu_parity] output_free=false seed=0x7e51c0de n=960: max_abs=1.883e-4 max_rel=7.261e-2 mean_abs=4.058e-5 (bar REL_TOL=1.0e-2 ABS_TOL=5.0e-3)
+test rdirect_unet::gpu_cpu_parity::cpu_twin_matches_gpu_tensor_path_free_output_res ... ok
+test rdirect_unet::gpu_cpu_parity::cpu_twin_matches_gpu_tensor_path_same_res ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 56 filtered out; finished in 0.62s
+

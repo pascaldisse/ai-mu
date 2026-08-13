@@ -1,0 +1,6039 @@
+use std::{
+    io::{Read, Write},
+    net::{Ipv4Addr, TcpListener, TcpStream},
+    path::{Path, PathBuf},
+    sync::{
+        Arc, Mutex, RwLock,
+        atomic::{AtomicBool, Ordering},
+        mpsc,
+    },
+    thread,
+    time::{Duration, Instant},
+};
+
+use scrying_glass::player::{Ground, Key, Player, PlayerParams};
+use scrying_glass::{input, player};
+
+use serde_json::json;
+use crystal::{Core, GaiaPackage, ImpulseOp, Op, OpBatch, load_world_dir};
+use glam::Vec3;
+use scrying_glass::ScryingGlassPackage;
+use scrying_glass::bloodbend::{self, Bend, Bloodbend, BloodbendParams};
+use scrying_glass::bvh::{Bvh, BvhParams, DEFAULT_DEGRADE_RATIO, DynamicSplice, RefitParams};
+use scrying_glass::denoiser::deserialize_weights as deserialize_denoiser_weights;
+use scrying_glass::denoiser_gpu::GpuDenoiser;
+// THE PURGE (Architect, whip 170) deleted these from the LIVE PRESENT path;
+// main's post-purge ITEM 16 de-charter kept them as an explicitly-gated lab
+// surface (`capture_pose_teacher_benchmark`, `?lab=teacher-benchmark` only,
+// never default-reachable) for examples/onepath_proof.rs + the viii2/viii3
+// ordeals — so the import stays, narrowed to that one cordoned caller.
+use scrying_glass::integrator::{
+    Integrator, IntegratorParams, IntegratorUniform, TemporalParams, resolve as resolve_accum,
+    split_aov, trace_headless, trace_headless_aov,
+};
+// NEURAL-LIVE N0.c construction scaffold: the ONE net presented per live frame.
+#[cfg(target_os = "macos")]
+use scrying_glass::rdirect::{ALBEDO_DEMOD_EPS, CamPose, HIST_FEATURES_SPLIT, INPUT_FEATURES};
+#[cfg(target_os = "macos")]
+use scrying_glass::rdirect_demod::DemodPass;
+#[cfg(target_os = "macos")]
+use scrying_glass::rdirect_evidence::EvidenceClamp;
+#[cfg(target_os = "macos")]
+use scrying_glass::rdirect_gather::{
+    FeatureGather, FeatureGatherHistSplit, FeatureGatherSplit, FeatureGatherV9, Fp16Packer,
+    HistoryBuffers,
+};
+#[cfg(target_os = "macos")]
+use scrying_glass::rdirect_live::RdirectLive;
+// V9 EYE-TEST WINDOW BUILD (2026-07-24): the U-Net body's live loader — see
+// `NetPresent::new`'s magic-byte dispatch (`GAIARD9\0` vs the MLP's
+// `GAIARDR1`) and `resolve_frame_v9` (the synchronous, non-pipelined present
+// path this atom wires; NOT the S9 double-buffered shape `RdirectLive` gets).
+#[cfg(target_os = "macos")]
+use scrying_glass::rdirect_unet::{self, PendingForward, UnetLive};
+use scrying_glass::rdirect_v9_compose::{compose_cpu_reference, V9ComposePass};
+use scrying_glass::scene::{
+    Camera, RenderScene, SceneParameters, SunDefaults, SunLight, WalkerPose,
+};
+use scrying_glass::retina::{self, GeometryCache as RetinaGeometryCache, Layers as RetinaLayers};
+use scrying_glass::upscaler::deserialize_weights as deserialize_upscaler_weights;
+use scrying_glass::upscaler_gpu::GpuUpscaler;
+use steiner::{AppliedBatch, WorldCore, WorldCoreParams, parse_op_batch};
+use tauri::{Manager, PhysicalPosition, PhysicalSize, WebviewUrl};
+
+const DEFAULT_NATIVE_PORT: u16 = 8430;
+const BYTES_PER_PIXEL: u32 = 4;
+const CAPTURE_SLOT_COUNT: usize = 3;
+
+#[derive(Clone)]
+struct ScryingGlassConfig {
+    window_width: f64,
+    window_height: f64,
+    /// God's render canvas. Trace, accumulation, temporal, and offscreen
+    /// present resources are permanently this size; only the OS surface moves.
+    native_canvas_width: u32,
+    native_canvas_height: u32,
+    panel_width: f64,
+    panel_height: f64,
+    panel_margin: f64,
+    fps: f64,
+    native_port: u16,
+    title: String,
+    auto_test_ipc: bool,
+    world_path: PathBuf,
+    scene: SceneParameters,
+    integrator: IntegratorParams,
+    bvh: BvhParams,
+    refit: RefitParams,
+    /// Accumulation frames a /scry moving-eye capture integrates for a crisp shot.
+    capture_frames: u32,
+    /// LIGHT-NOT-DOTS: temporal accumulation with reprojection on the live
+    /// present path (GAIA_NATIVE_TEMPORAL, default ON). When off the legacy
+    /// reset-on-move accum path runs (the escape hatch).
+    temporal_enabled: bool,
+    temporal: TemporalParams,
+    /// FPS COUNTER BURST — HUD toggle (GAIA_NATIVE_HUD, default ON) and its
+    /// rolling-median sample window (GAIA_NATIVE_HUD_WINDOW, default 30).
+    hud_enabled: bool,
+    hud_window: usize,
+    /// OWN-BODY CULL override (`GAIA_NATIVE_DRAW_OWN_BODY`, default off/false):
+    /// force a walker-attached body (nari) to draw even from its own eye —
+    /// the pre-fix behavior, kept as an escape hatch (debugging the vessel
+    /// itself, a future third-person mode). Off is the normal weld: her body
+    /// vanishes only from the exact eye it is attached to.
+    draw_own_body: bool,
+    /// Native realm authority: Steiner seed, bounded event view, HTTP limits.
+    world_core: WorldCoreParams,
+    authority_timeout: Duration,
+    event_default_limit: usize,
+    event_limit_max: usize,
+    max_request_bytes: usize,
+    /// WORKER WINDOW (`GAIA_NATIVE_WORKER_WINDOW`, default off/false — Nekromant
+    /// case #1 fix): a worker instance's window is built non-activating/
+    /// never-key (`focused(false)` + `focusable(false)`, which on macOS rides
+    /// tao's `canBecomeKeyWindow`/`canBecomeMainWindow` override down to a
+    /// permanent `false` — the portable equivalent of patching NSWindow's
+    /// `canBecomeKeyWindow`, no raw objc2 subclassing needed). Such a window
+    /// can never accept a keystroke (including Cmd+Q) no matter what GPU-load
+    /// activation storm hits the app. Off is the pre-fix behavior (Architect's
+    /// live window at :8430 stays exactly as before).
+    worker_window: bool,
+    /// NEURAL-LIVE N0.c CONSTRUCTION SCAFFOLD (`GAIA_NATIVE_NET_PRESENT`,
+    /// default OFF on the branch). When on, the live window loop presents the
+    /// ONE net's frame every frame: trace low radiance + native AOV → GPU
+    /// feature gather (N0.b) → MPSGraph batched-GEMM forward (N0.a) → undo
+    /// log-demod by the native albedo → the existing blit/present path. This
+    /// flag DIES at lane cutover — the merged state presents the net
+    /// unconditionally, no flag. macOS-only (the MPSGraph net is macOS-only).
+    net_present: bool,
+    /// WINDOW-BAN OFFSCREEN mode (`GAIA_NATIVE_OFFSCREEN`, default off). When
+    /// on, NO NSWindow is ever created: the whole tauri/winit surface path is
+    /// skipped, the render loop draws only to the offscreen texture (the
+    /// presented eye), and `/scry` serves it over HTTP. The mandated proof
+    /// surface — measurement runs never put a window on the Architect's
+    /// desktop. Width/height come from the window-size config fields.
+    offscreen: bool,
+}
+
+impl ScryingGlassConfig {
+    fn from_env() -> Result<Self, String> {
+        let number = |name: &str, default: f64| -> Result<f64, String> {
+            match std::env::var(name) {
+                Ok(value) => value
+                    .parse::<f64>()
+                    .map_err(|_| format!("{name} must be a number, got {value:?}")),
+                Err(_) => Ok(default),
+            }
+        };
+        let native_port = match std::env::var("GAIA_NATIVE_PORT") {
+            Ok(value) => value
+                .parse::<u16>()
+                .map_err(|_| format!("GAIA_NATIVE_PORT must be a port, got {value:?}"))?,
+            Err(_) => DEFAULT_NATIVE_PORT,
+        };
+        let integer = |name: &str, default: u32| -> Result<u32, String> {
+            match std::env::var(name) {
+                Ok(value) => value
+                    .parse::<u32>()
+                    .map_err(|_| format!("{name} must be an integer, got {value:?}")),
+                Err(_) => Ok(default),
+            }
+        };
+        let auto_test_ipc = match std::env::var("SPIKE_AUTOTEST_IPC") {
+            Ok(value) => value
+                .parse::<bool>()
+                .map_err(|_| format!("SPIKE_AUTOTEST_IPC must be true or false, got {value:?}"))?,
+            Err(_) => false,
+        };
+        let hud_enabled = match std::env::var("GAIA_NATIVE_HUD") {
+            Ok(value) => value
+                .parse::<bool>()
+                .map_err(|_| format!("GAIA_NATIVE_HUD must be true or false, got {value:?}"))?,
+            Err(_) => true,
+        };
+        let world_path = std::env::var_os("GAIA_WORLD")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| Path::new(env!("CARGO_MANIFEST_DIR")).join("../../worlds/naruko"));
+        // Nekromant case #1 fix: a worker instance never activates/steals
+        // focus (item 1 below, applied to the window builder) and defaults to
+        // a visibly smaller window + a title suffix so the Architect can tell
+        // a worker apart from the one live window at a glance (item 1, param).
+        let worker_window = match std::env::var("GAIA_NATIVE_WORKER_WINDOW") {
+            Ok(value) => value.parse::<bool>().map_err(|_| {
+                format!("GAIA_NATIVE_WORKER_WINDOW must be true or false, got {value:?}")
+            })?,
+            Err(_) => false,
+        };
+        let default_window_width = if worker_window { 480.0 } else { 960.0 };
+        let default_window_height = if worker_window { 320.0 } else { 640.0 };
+        let config = Self {
+            window_width: number("GAIA_NATIVE_WIDTH", default_window_width)?,
+            window_height: number("GAIA_NATIVE_HEIGHT", default_window_height)?,
+            native_canvas_width: integer("GAIA_NATIVE_CANVAS_W", 640)?,
+            native_canvas_height: integer("GAIA_NATIVE_CANVAS_H", 480)?,
+            panel_width: number("SPIKE_PANEL_WIDTH", 300.0)?,
+            panel_height: number("SPIKE_PANEL_HEIGHT", 154.0)?,
+            panel_margin: number("SPIKE_PANEL_MARGIN", 24.0)?,
+            fps: number("GAIA_NATIVE_FPS", 60.0)?,
+            native_port,
+            title: {
+                let base = std::env::var("GAIA_NATIVE_TITLE")
+                    .unwrap_or_else(|_| "GAIA — Scrying Glass".into());
+                if worker_window {
+                    format!("{base} [worker]")
+                } else {
+                    base
+                }
+            },
+            auto_test_ipc,
+            world_path,
+            scene: SceneParameters {
+                fov_y_degrees: number("GAIA_NATIVE_FOV", 60.0)? as f32,
+                near: number("GAIA_NATIVE_NEAR", 0.1)? as f32,
+                far: number("GAIA_NATIVE_FAR", 4_000.0)? as f32,
+                sky_top: std::env::var("GAIA_NATIVE_SKY_TOP").unwrap_or_else(|_| "#20152f".into()),
+                sky_horizon: std::env::var("GAIA_NATIVE_SKY_HORIZON")
+                    .unwrap_or_else(|_| "#9a627d".into()),
+                mesh_color: std::env::var("GAIA_NATIVE_MESH_COLOR")
+                    .unwrap_or_else(|_| "#9aa0a6".into()),
+                radial_segments: integer("GAIA_NATIVE_RADIAL_SEGMENTS", 24)?,
+                camera_position: [
+                    number("GAIA_NATIVE_CAMERA_X", 0.0)? as f32,
+                    number("GAIA_NATIVE_CAMERA_Y", 2.0)? as f32,
+                    number("GAIA_NATIVE_CAMERA_Z", 22.0)? as f32,
+                ],
+                camera_yaw: number("GAIA_NATIVE_CAMERA_YAW", 0.0)? as f32,
+                camera_pitch: number("GAIA_NATIVE_CAMERA_PITCH", 0.0)? as f32,
+                tick_dt: number("GAIA_NATIVE_TICK_DT", 1.0 / 60.0)?,
+                sun: SunDefaults {
+                    sun_color: std::env::var("GAIA_NATIVE_SUN_COLOR")
+                        .unwrap_or_else(|_| "#ffe2b0".into()),
+                    sun_intensity: number("GAIA_NATIVE_SUN_INTENSITY", 1.1)? as f32,
+                    sun_position: [
+                        number("GAIA_NATIVE_SUN_X", 60.0)? as f32,
+                        number("GAIA_NATIVE_SUN_Y", 90.0)? as f32,
+                        number("GAIA_NATIVE_SUN_Z", 30.0)? as f32,
+                    ],
+                    ambient_intensity: number("GAIA_NATIVE_AMBIENT_INTENSITY", 0.32)? as f32,
+                },
+                emission_intensity: number("GAIA_NATIVE_EMISSIVE_INTENSITY", 2.5)? as f32,
+            },
+            integrator: IntegratorParams {
+                spp: integer("GAIA_NATIVE_SPP", 2)?,
+                max_bounces: integer("GAIA_NATIVE_MAX_BOUNCES", 4)?,
+                rr_start: integer("GAIA_NATIVE_RR_START", 2)?,
+                seed: integer("GAIA_NATIVE_SEED", 0x5eed)?,
+                eps: number("GAIA_NATIVE_RAY_EPS", 1e-3)? as f32,
+            },
+            bvh: BvhParams {
+                leaf_max: integer("GAIA_NATIVE_BVH_LEAF", 4)? as usize,
+                max_depth: integer("GAIA_NATIVE_BVH_DEPTH", 64)? as usize,
+                sah_bins: integer("GAIA_NATIVE_BVH_SAH_BINS", 16)? as usize,
+            },
+            refit: RefitParams {
+                degrade_ratio: number(
+                    "GAIA_NATIVE_BVH_REFIT_DEGRADE",
+                    RefitParams::default().degrade_ratio as f64,
+                )? as f32,
+                max_refits: integer("GAIA_NATIVE_BVH_REFIT_MAX", 0)?,
+            },
+            capture_frames: integer("GAIA_NATIVE_CAPTURE_FRAMES", 48)?,
+            // render_width/render_height/upscale_mode are GONE (CONFORM's
+            // God-canvas rename unified them into native_canvas_width/height
+            // above; THE PURGE independently deleted the GAIA_NATIVE_UPSCALE
+            // resolve A/B — both land on the same one-canvas, Pleroma-only shape).
+            temporal_enabled: match std::env::var("GAIA_NATIVE_TEMPORAL") {
+                Ok(value) => value.parse::<bool>().map_err(|_| {
+                    format!("GAIA_NATIVE_TEMPORAL must be true or false, got {value:?}")
+                })?,
+                // THE DESIGN IS THE LAW (Architect, 07-18): the shipped present
+                // path is trace → THE NET → screen and nothing else. The temporal
+                // accumulation machinery is LAB EQUIPMENT (training ground-truth
+                // generator + history-buffer substrate) — default OFF; its
+                // hand-heuristics (gates/clamps/thresholds) never ship. Until the
+                // net lands in the present path, the window shows the one
+                // integrator's young samples — the truth, not a stand-in.
+                Err(_) => false,
+            },
+            temporal: TemporalParams {
+                alpha_min: number("GAIA_NATIVE_TEMPORAL_ALPHA_MIN", 0.1)? as f32,
+                depth_tol: number("GAIA_NATIVE_TEMPORAL_DEPTH_TOL", 0.05)? as f32,
+                normal_tol: number("GAIA_NATIVE_TEMPORAL_NORMAL_TOL", 0.85)? as f32,
+                clamp_k: number("GAIA_NATIVE_TEMPORAL_CLAMP_K", 1.5)? as f32,
+                max_history: integer("GAIA_NATIVE_TEMPORAL_MAX_HISTORY", 512)?,
+                still_px: number("GAIA_NATIVE_TEMPORAL_STILL_PX", 0.05)? as f32,
+            },
+            hud_enabled,
+            hud_window: integer("GAIA_NATIVE_HUD_WINDOW", 30)? as usize,
+            draw_own_body: match std::env::var("GAIA_NATIVE_DRAW_OWN_BODY") {
+                Ok(value) => value.parse::<bool>().map_err(|_| {
+                    format!("GAIA_NATIVE_DRAW_OWN_BODY must be true or false, got {value:?}")
+                })?,
+                Err(_) => false,
+            },
+            world_core: WorldCoreParams {
+                seed: integer("GAIA_NATIVE_WORLD_SEED", 0x5eed)? as u64,
+                event_capacity: integer("GAIA_NATIVE_EVENT_CAPACITY", 2_000)? as usize,
+                ..WorldCoreParams::default()
+            },
+            authority_timeout: Duration::from_millis(u64::from(integer(
+                "GAIA_NATIVE_OP_TIMEOUT_MS",
+                5_000,
+            )?)),
+            event_default_limit: integer("GAIA_NATIVE_EVENT_DEFAULT_LIMIT", 200)? as usize,
+            event_limit_max: integer("GAIA_NATIVE_EVENT_LIMIT_MAX", 500)? as usize,
+            max_request_bytes: integer("GAIA_NATIVE_HTTP_MAX_BYTES", 1 << 20)? as usize,
+            worker_window,
+            // THE PURGE: the GAIA_NATIVE_NET_PRESENT scaffold is DELETED —
+            // Pleroma IS the render, not an option. Always on; runtime states
+            // are Pleroma-image or BLACK only (macOS; non-macOS has no Pleroma
+            // rig so it presents black by law).
+            net_present: true,
+            offscreen: match std::env::var("GAIA_NATIVE_OFFSCREEN") {
+                Ok(value) => value.parse::<bool>().map_err(|_| {
+                    format!("GAIA_NATIVE_OFFSCREEN must be true or false, got {value:?}")
+                })?,
+                Err(_) => false,
+            },
+        };
+        if config.window_width <= 0.0
+            || config.window_height <= 0.0
+            || config.panel_width <= 0.0
+            || config.panel_height <= 0.0
+            || config.panel_margin < 0.0
+            || config.fps <= 0.0
+            || config.native_port == 0
+            || config.native_canvas_width == 0
+            || config.native_canvas_height == 0
+            || config.world_core.event_capacity == 0
+            || config.authority_timeout.is_zero()
+            || config.event_default_limit == 0
+            || config.event_limit_max == 0
+            || config.max_request_bytes == 0
+        {
+            return Err(
+                "window/canvas dimensions, FPS, port, authority/event/request limits must be positive (margin may be zero)"
+                    .into(),
+            );
+        }
+        if config.panel_width + config.panel_margin > config.window_width
+            || config.panel_height + config.panel_margin > config.window_height
+        {
+            return Err("overlay panel plus SPIKE_PANEL_MARGIN must fit in the window".into());
+        }
+        Ok(config)
+    }
+
+    fn frame_interval(&self) -> Duration {
+        Duration::from_secs_f64(1.0 / self.fps)
+    }
+
+    fn panel_layout(&self, size: PhysicalSize<u32>) -> (PhysicalPosition<f64>, PhysicalSize<u32>) {
+        let width = f64::from(size.width);
+        let position = PhysicalPosition::new(
+            (width - self.panel_width - self.panel_margin).max(0.0),
+            self.panel_margin,
+        );
+        let panel = PhysicalSize::new(
+            self.panel_width.round() as u32,
+            self.panel_height.round() as u32,
+        );
+        (position, panel)
+    }
+
+    fn is_panel_point(&self, x: f64, y: f64, size: PhysicalSize<u32>) -> bool {
+        let width = f64::from(size.width);
+        let height = f64::from(size.height);
+        let left = width - self.panel_width - self.panel_margin;
+        let bottom = height - self.panel_height - self.panel_margin;
+        x >= left
+            && x <= width - self.panel_margin
+            && y >= bottom
+            && y <= height - self.panel_margin
+    }
+}
+
+#[derive(Clone, Copy)]
+enum PixelOrder {
+    Rgba,
+    Bgra,
+}
+
+struct CapturedFrame {
+    width: u32,
+    height: u32,
+    rgba: Vec<u8>,
+}
+
+type LatestFrame = Arc<RwLock<Option<Arc<CapturedFrame>>>>;
+
+/// S12.5 AI DEBUG DOOR: the latest per-stage budget + forward-state JSON, kept
+/// fresh by the render loop and served by `/budget` and `/state`.
+#[derive(Default)]
+struct DebugSnapshot {
+    budget: String,
+    state: String,
+}
+type DebugCell = Arc<RwLock<DebugSnapshot>>;
+
+struct CaptureReady {
+    result: Result<(), String>,
+    buffer: wgpu::Buffer,
+    width: u32,
+    height: u32,
+    padded_bytes_per_row: u32,
+    pixel_order: PixelOrder,
+    busy: Arc<AtomicBool>,
+}
+
+fn spawn_capture_worker(latest: LatestFrame) -> mpsc::Sender<CaptureReady> {
+    let (sender, receiver) = mpsc::channel::<CaptureReady>();
+    thread::Builder::new()
+        .name("gaia-frame-capture".into())
+        .spawn(move || {
+            while let Ok(capture) = receiver.recv() {
+                if let Err(error) = &capture.result {
+                    eprintln!("[screenshot] framebuffer map failed: {error}");
+                    capture.busy.store(false, Ordering::Release);
+                    continue;
+                }
+                let row_bytes = (capture.width * BYTES_PER_PIXEL) as usize;
+                let mapped = match capture.buffer.get_mapped_range(..) {
+                    Ok(mapped) => mapped,
+                    Err(error) => {
+                        eprintln!("[screenshot] mapped framebuffer unavailable: {error}");
+                        capture.buffer.unmap();
+                        capture.busy.store(false, Ordering::Release);
+                        continue;
+                    }
+                };
+                let mut rgba = Vec::with_capacity(row_bytes * capture.height as usize);
+                for row in mapped
+                    .chunks(capture.padded_bytes_per_row as usize)
+                    .take(capture.height as usize)
+                {
+                    rgba.extend_from_slice(&row[..row_bytes]);
+                }
+                if matches!(capture.pixel_order, PixelOrder::Bgra) {
+                    for pixel in rgba.chunks_exact_mut(BYTES_PER_PIXEL as usize) {
+                        pixel.swap(0, 2);
+                    }
+                }
+                drop(mapped);
+                capture.buffer.unmap();
+                if let Ok(mut frame) = latest.write() {
+                    *frame = Some(Arc::new(CapturedFrame {
+                        width: capture.width,
+                        height: capture.height,
+                        rgba,
+                    }));
+                }
+                capture.busy.store(false, Ordering::Release);
+            }
+        })
+        .expect("spawn framebuffer capture worker");
+    sender
+}
+
+fn encode_png(frame: &CapturedFrame) -> Result<Vec<u8>, String> {
+    let mut bytes = Vec::new();
+    {
+        let mut encoder = png::Encoder::new(&mut bytes, frame.width, frame.height);
+        encoder.set_color(png::ColorType::Rgba);
+        encoder.set_depth(png::BitDepth::Eight);
+        let mut writer = encoder.write_header().map_err(|error| error.to_string())?;
+        writer
+            .write_image_data(&frame.rgba)
+            .map_err(|error| error.to_string())?;
+    }
+    Ok(bytes)
+}
+
+fn write_response(
+    stream: &mut TcpStream,
+    status: &str,
+    content_type: &str,
+    body: &[u8],
+    extra_headers: &str,
+) -> std::io::Result<()> {
+    write!(
+        stream,
+        "HTTP/1.1 {status}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Headers: content-type\r\nCache-Control: no-store\r\nConnection: close\r\n{extra_headers}\r\n",
+        body.len()
+    )?;
+    stream.write_all(body)
+}
+
+fn respond_json(stream: &mut TcpStream, status: &str, value: serde_json::Value) {
+    match serde_json::to_vec_pretty(&value) {
+        Ok(body) => {
+            let _ = write_response(
+                stream,
+                status,
+                "application/json; charset=utf-8",
+                &body,
+                "",
+            );
+        }
+        Err(error) => {
+            let _ = write_response(
+                stream,
+                "500 Internal Server Error",
+                "application/json; charset=utf-8",
+                json!({ "ok": false, "error": error.to_string() })
+                    .to_string()
+                    .as_bytes(),
+                "",
+            );
+        }
+    }
+}
+
+fn respond_frame(stream: &mut TcpStream, frame: &CapturedFrame) {
+    match encode_png(frame) {
+        Ok(png) => {
+            let dimensions = format!("X-GAIA-Framebuffer: {}x{}\r\n", frame.width, frame.height);
+            let _ = write_response(stream, "200 OK", "image/png", &png, &dimensions);
+        }
+        Err(error) => {
+            let _ = write_response(
+                stream,
+                "500 Internal Server Error",
+                "text/plain; charset=utf-8",
+                error.as_bytes(),
+                "",
+            );
+        }
+    }
+}
+
+enum WorldRequest {
+    Apply {
+        batch: OpBatch,
+        reply: mpsc::Sender<Result<AppliedBatch, String>>,
+    },
+    Snapshot {
+        reply: mpsc::Sender<Result<serde_json::Value, String>>,
+    },
+    Events {
+        since: u64,
+        limit: usize,
+        reply: mpsc::Sender<serde_json::Value>,
+    },
+}
+
+/// HTTP ↔ render-authority channels + embodied debug state.
+struct HttpContext {
+    latest: LatestFrame,
+    scry: mpsc::Sender<RenderRequest>,
+    world: mpsc::Sender<WorldRequest>,
+    authority_timeout: Duration,
+    event_default_limit: usize,
+    event_limit_max: usize,
+    max_request_bytes: usize,
+    player: Arc<Mutex<Player>>,
+    ground: Arc<Ground>,
+    tick_dt: f32,
+    /// S12.5: live budget/state JSON for `/budget` and `/state`.
+    debug: DebugCell,
+    /// V7-LIVE LANE PERF ROOM 7: shutdown-flush trigger for the
+    /// `GAIA_FRAME_CSV` per-frame series. `/frame_csv` sets it; the render
+    /// loop (which owns `NetPresent`, not `Send`-shared) checks it once per
+    /// iteration and does the actual `std::fs::write`.
+    frame_csv_flush: Arc<AtomicBool>,
+}
+
+/// Read one bounded HTTP request, including its Content-Length body.
+fn read_request(stream: &mut TcpStream, max_bytes: usize) -> Option<(String, String)> {
+    let mut buffer = Vec::with_capacity(4096);
+    let mut chunk = [0_u8; 4096];
+    let header_end = loop {
+        let read = stream.read(&mut chunk).ok()?;
+        if read == 0 {
+            return None;
+        }
+        buffer.extend_from_slice(&chunk[..read]);
+        if let Some(index) = buffer.windows(4).position(|w| w == b"\r\n\r\n") {
+            break index + 4;
+        }
+        if buffer.len() > max_bytes {
+            return None;
+        }
+    };
+    let headers = String::from_utf8_lossy(&buffer[..header_end]).into_owned();
+    let content_length = headers
+        .lines()
+        .find_map(|line| {
+            let (name, value) = line.split_once(':')?;
+            name.trim()
+                .eq_ignore_ascii_case("content-length")
+                .then(|| value.trim().parse::<usize>().ok())
+                .flatten()
+        })
+        .unwrap_or(0);
+    if header_end.checked_add(content_length)? > max_bytes {
+        return None;
+    }
+    while buffer.len() < header_end + content_length {
+        let read = stream.read(&mut chunk).ok()?;
+        if read == 0 {
+            break;
+        }
+        buffer.extend_from_slice(&chunk[..read]);
+    }
+    let body = String::from_utf8_lossy(
+        &buffer[header_end..header_end + content_length.min(buffer.len() - header_end)],
+    )
+    .into_owned();
+    Some((headers, body))
+}
+
+fn handle_http(mut stream: TcpStream, ctx: &HttpContext) {
+    let latest = &ctx.latest;
+    let scry = &ctx.scry;
+    let _ = stream.set_read_timeout(Some(Duration::from_secs(2)));
+    let Some((headers, body)) = read_request(&mut stream, ctx.max_request_bytes) else {
+        return;
+    };
+    let first_line = headers.lines().next().unwrap_or_default().to_owned();
+    let mut tokens = first_line.split_whitespace();
+    let method = tokens.next().unwrap_or_default();
+    let target = tokens.next().unwrap_or_default();
+    let (path, query) = target.split_once('?').unwrap_or((target, ""));
+
+    if method == "OPTIONS" {
+        let _ = write_response(
+            &mut stream,
+            "204 No Content",
+            "text/plain; charset=utf-8",
+            b"",
+            "Allow: GET, POST, OPTIONS\r\n",
+        );
+        return;
+    }
+    if path == "/op" && method == "POST" {
+        let value = match serde_json::from_str::<serde_json::Value>(&body) {
+            Ok(value) => value,
+            Err(error) => {
+                respond_json(
+                    &mut stream,
+                    "400 Bad Request",
+                    json!({ "ok": false, "error": format!("op body must be JSON: {error}") }),
+                );
+                return;
+            }
+        };
+        let batch = match parse_op_batch(value) {
+            Ok(batch) => batch,
+            Err(error) => {
+                respond_json(
+                    &mut stream,
+                    "400 Bad Request",
+                    json!({ "ok": false, "error": error }),
+                );
+                return;
+            }
+        };
+        let (reply, receive) = mpsc::channel();
+        if ctx
+            .world
+            .send(WorldRequest::Apply { batch, reply })
+            .is_err()
+        {
+            respond_json(
+                &mut stream,
+                "503 Service Unavailable",
+                json!({ "ok": false, "error": "world authority unavailable" }),
+            );
+            return;
+        }
+        match receive.recv_timeout(ctx.authority_timeout) {
+            Ok(Ok(report)) => respond_json(
+                &mut stream,
+                "200 OK",
+                json!({
+                    "ok": true,
+                    "applied": report.applied,
+                    "entropy": report.entropy,
+                    "latest": report.latest,
+                }),
+            ),
+            Ok(Err(error)) => respond_json(
+                &mut stream,
+                "400 Bad Request",
+                json!({ "ok": false, "error": error }),
+            ),
+            Err(_) => respond_json(
+                &mut stream,
+                "504 Gateway Timeout",
+                json!({ "ok": false, "error": "world authority timed out" }),
+            ),
+        }
+        return;
+    }
+    if path == "/world" && method == "GET" {
+        let (reply, receive) = mpsc::channel();
+        if ctx.world.send(WorldRequest::Snapshot { reply }).is_err() {
+            respond_json(
+                &mut stream,
+                "503 Service Unavailable",
+                json!({ "ok": false, "error": "world authority unavailable" }),
+            );
+            return;
+        }
+        match receive.recv_timeout(ctx.authority_timeout) {
+            Ok(Ok(snapshot)) => respond_json(&mut stream, "200 OK", snapshot),
+            Ok(Err(error)) => respond_json(
+                &mut stream,
+                "500 Internal Server Error",
+                json!({ "ok": false, "error": error }),
+            ),
+            Err(_) => respond_json(
+                &mut stream,
+                "504 Gateway Timeout",
+                json!({ "ok": false, "error": "world authority timed out" }),
+            ),
+        }
+        return;
+    }
+    if path == "/events" && method == "GET" {
+        let query_value = |key: &str| {
+            query.split('&').find_map(|pair| {
+                let (name, value) = pair.split_once('=')?;
+                (name == key).then_some(value)
+            })
+        };
+        let since = query_value("since")
+            .and_then(|value| value.parse::<u64>().ok())
+            .unwrap_or(0);
+        let limit = query_value("limit")
+            .and_then(|value| value.parse::<usize>().ok())
+            .unwrap_or(ctx.event_default_limit)
+            .min(ctx.event_limit_max);
+        let (reply, receive) = mpsc::channel();
+        if ctx
+            .world
+            .send(WorldRequest::Events {
+                since,
+                limit,
+                reply,
+            })
+            .is_err()
+        {
+            respond_json(
+                &mut stream,
+                "503 Service Unavailable",
+                json!({ "ok": false, "error": "world authority unavailable" }),
+            );
+            return;
+        }
+        match receive.recv_timeout(ctx.authority_timeout) {
+            Ok(events) => respond_json(&mut stream, "200 OK", events),
+            Err(_) => respond_json(
+                &mut stream,
+                "504 Gateway Timeout",
+                json!({ "ok": false, "error": "world authority timed out" }),
+            ),
+        }
+        return;
+    }
+
+    // Embodiment debug organs (param-gated by their presence, no keyboard needed):
+    // GET /pose returns the body's eye pose; POST /walk injects held keys for N ticks.
+    if path == "/pose" && method == "GET" {
+        respond_pose(&mut stream, ctx);
+        return;
+    }
+    if path == "/walk" && method == "POST" {
+        respond_walk(&mut stream, ctx, &body);
+        return;
+    }
+    if path == "/push" && method == "POST" {
+        respond_push(&mut stream, ctx, &body);
+        return;
+    }
+    // S12.5 AI DEBUG DOOR: live per-stage budget + forward state as JSON.
+    if path == "/budget" && method == "GET" {
+        let json = ctx
+            .debug
+            .read()
+            .ok()
+            .map(|d| d.budget.clone())
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| "{\"frames\":0}".to_string());
+        let _ = write_response(
+            &mut stream,
+            "200 OK",
+            "application/json; charset=utf-8",
+            json.as_bytes(),
+            "",
+        );
+        return;
+    }
+    // V7-LIVE LANE PERF ROOM 7: request a `GAIA_FRAME_CSV` flush (the render
+    // thread does the actual write next iteration — NetPresent isn't shared
+    // across threads). No-op (harmless) if the env gate was never set.
+    if path == "/frame_csv" && method == "GET" {
+        ctx.frame_csv_flush.store(true, Ordering::Release);
+        let _ = write_response(
+            &mut stream,
+            "200 OK",
+            "application/json; charset=utf-8",
+            b"{\"requested\":true}",
+            "",
+        );
+        return;
+    }
+    if path == "/state" && method == "GET" {
+        let json = ctx
+            .debug
+            .read()
+            .ok()
+            .map(|d| d.state.clone())
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| "{\"note\":\"warming up\"}".to_string());
+        let _ = write_response(
+            &mut stream,
+            "200 OK",
+            "application/json; charset=utf-8",
+            json.as_bytes(),
+            "",
+        );
+        return;
+    }
+
+    if method != "GET" {
+        let _ = write_response(
+            &mut stream,
+            "405 Method Not Allowed",
+            "text/plain; charset=utf-8",
+            b"method not allowed\n",
+            "Allow: GET, POST\r\n",
+        );
+        return;
+    }
+    // GET /scry — the true name (GRIMOIRE: a screenshot is a scrying).
+    // GET /screenshot is kept as an alias for tool compatibility.
+    if path == "/retina" {
+        let params = match parse_retina_query(query) {
+            Ok(params) => params,
+            Err(error) => { let _ = write_response(&mut stream, "400 Bad Request", "text/plain; charset=utf-8", error.as_bytes(), ""); return; }
+        };
+        let (reply_tx, reply_rx) = mpsc::channel();
+        if scry.send(RenderRequest::Retina { params, reply: reply_tx }).is_err() {
+            let _ = write_response(&mut stream, "503 Service Unavailable", "text/plain; charset=utf-8", b"render thread unavailable\n", "");
+            return;
+        }
+        match reply_rx.recv_timeout(Duration::from_secs(5)) {
+            Ok(Ok(json)) => { let _ = write_response(&mut stream, "200 OK", "application/json; charset=utf-8", json.as_bytes(), ""); }
+            Ok(Err(error)) => { let _ = write_response(&mut stream, "500 Internal Server Error", "text/plain; charset=utf-8", error.as_bytes(), ""); }
+            Err(_) => { let _ = write_response(&mut stream, "504 Gateway Timeout", "text/plain; charset=utf-8", b"retina trace timed out\n", ""); }
+        }
+        return;
+    }
+    if path != "/scry" && path != "/screenshot" {
+        let _ = write_response(
+            &mut stream,
+            "404 Not Found",
+            "text/plain; charset=utf-8",
+            b"not found\n",
+            "",
+        );
+        return;
+    }
+
+    // Parse the query (pose overrides and/or the S12.5 eye selector). An empty
+    // query yields the default params (the bare live-frame request).
+    let params = match parse_scry_query(query) {
+        Ok(params) => params,
+        Err(error) => {
+            let _ = write_response(
+                &mut stream,
+                "400 Bad Request",
+                "text/plain; charset=utf-8",
+                error.as_bytes(),
+                "",
+            );
+            return;
+        }
+    };
+    // THE PURGE: `/scry` serves ONLY Pleroma's presented canvas. Try the cached
+    // frame first (populated only under GAIA_NATIVE_PERFRAME_READBACK); else
+    // round-trip to the render thread's on-demand `capture_presented`.
+    if let Some(frame) = latest.read().ok().and_then(|frame| frame.clone()) {
+        respond_frame(&mut stream, &frame);
+        return;
+    }
+    let (reply_tx, reply_rx) = mpsc::channel();
+    if scry
+        .send(RenderRequest::Scry(ScryRequest {
+            params,
+            reply: reply_tx,
+        }))
+        .is_err()
+    {
+        let _ = write_response(
+            &mut stream,
+            "503 Service Unavailable",
+            "text/plain; charset=utf-8",
+            b"render thread unavailable\n",
+            "",
+        );
+        return;
+    }
+    match reply_rx.recv_timeout(Duration::from_secs(5)) {
+        Ok(Ok(frame)) => respond_frame(&mut stream, &frame),
+        Ok(Err(error)) => {
+            let _ = write_response(
+                &mut stream,
+                "500 Internal Server Error",
+                "text/plain; charset=utf-8",
+                error.as_bytes(),
+                "",
+            );
+        }
+        Err(_) => {
+            let _ = write_response(
+                &mut stream,
+                "504 Gateway Timeout",
+                "text/plain; charset=utf-8",
+                b"scry render timed out\n",
+                "",
+            );
+        }
+    }
+}
+
+/// Format a pose as the `/pose` — and `/walk` stream — JSON object.
+fn pose_json(pose: &player::Pose) -> String {
+    format!(
+        "{{\"position\":[{},{},{}],\"yaw\":{},\"pitch\":{},\"eyeHeight\":{},\"feetY\":{},\"grounded\":{},\"vy\":{}}}",
+        pose.position.x,
+        pose.position.y,
+        pose.position.z,
+        pose.yaw,
+        pose.pitch,
+        pose.eye_height,
+        pose.position.y - pose.eye_height,
+        pose.grounded,
+        pose.vy,
+    )
+}
+
+/// GET /pose — the body's current eye pose (debug organ).
+fn respond_pose(stream: &mut TcpStream, ctx: &HttpContext) {
+    let pose = match ctx.player.lock() {
+        Ok(player) => player.pose(),
+        Err(_) => {
+            let _ = write_response(
+                stream,
+                "500 Internal Server Error",
+                "text/plain; charset=utf-8",
+                b"player state poisoned\n",
+                "",
+            );
+            return;
+        }
+    };
+    let _ = write_response(
+        stream,
+        "200 OK",
+        "application/json; charset=utf-8",
+        pose_json(&pose).as_bytes(),
+        "",
+    );
+}
+
+/// POST /walk — inject held keys for N deterministic ticks (debug organ). Body
+/// is `{\"keys\":[...], \"yaw\"?, \"pitch\"?, \"ticks\"?}`. Returns the final pose
+/// plus the full per-tick pose stream so play-tests read exactly what moved.
+fn respond_walk(stream: &mut TcpStream, ctx: &HttpContext, body: &str) {
+    let request: serde_json::Value = match serde_json::from_str(body.trim()) {
+        Ok(value) => value,
+        Err(error) => {
+            let _ = write_response(
+                stream,
+                "400 Bad Request",
+                "text/plain; charset=utf-8",
+                format!("walk body must be JSON: {error}").as_bytes(),
+                "",
+            );
+            return;
+        }
+    };
+    let ticks = request
+        .get("ticks")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(1)
+        .min(100_000) as u32;
+    let keys: std::collections::HashSet<Key> = request
+        .get("keys")
+        .and_then(serde_json::Value::as_array)
+        .map(|array| {
+            array
+                .iter()
+                .filter_map(|item| item.as_str().and_then(Key::from_token))
+                .collect()
+        })
+        .unwrap_or_default();
+    let yaw = request.get("yaw").and_then(serde_json::Value::as_f64);
+    let pitch = request.get("pitch").and_then(serde_json::Value::as_f64);
+
+    let mut player = match ctx.player.lock() {
+        Ok(player) => player,
+        Err(_) => {
+            let _ = write_response(
+                stream,
+                "500 Internal Server Error",
+                "text/plain; charset=utf-8",
+                b"player state poisoned\n",
+                "",
+            );
+            return;
+        }
+    };
+    if let Some(yaw) = yaw {
+        player.yaw = yaw as f32;
+    }
+    if let Some(pitch) = pitch {
+        player.pitch = (pitch as f32).clamp(-player.params.pitch_limit, player.params.pitch_limit);
+    }
+    player.keys = keys;
+    let mut poses = Vec::with_capacity(ticks as usize);
+    for _ in 0..ticks {
+        player.step(ctx.tick_dt, &ctx.ground);
+        poses.push(pose_json(&player.pose()));
+    }
+    // Injected keys are transient: clear them so the render loop doesn't keep
+    // walking after the organ returns.
+    player.keys.clear();
+    let final_pose = pose_json(&player.pose());
+    drop(player);
+
+    let body = format!(
+        "{{\"ticks\":{ticks},\"pose\":{final_pose},\"stream\":[{}]}}",
+        poses.join(",")
+    );
+    let _ = write_response(
+        stream,
+        "200 OK",
+        "application/json; charset=utf-8",
+        body.as_bytes(),
+        "",
+    );
+}
+
+/// POST /push — fire ONE push from the current view ray, the exact keyboard
+/// path without a keyboard: flip the shared player's `push_pending` flag (the
+/// same flag the F key and a pointer-locked click set) so the render loop
+/// casts the ray, picks the nearest aimed-at body, and shoves it with an
+/// `Op::Impulse` on its next tick. Optional body `{yaw?, pitch?}` aims first.
+fn respond_push(stream: &mut TcpStream, ctx: &HttpContext, body: &str) {
+    let request: serde_json::Value = serde_json::from_str(body.trim()).unwrap_or(serde_json::Value::Null);
+    let yaw = request.get("yaw").and_then(serde_json::Value::as_f64);
+    let pitch = request.get("pitch").and_then(serde_json::Value::as_f64);
+    let mut player = match ctx.player.lock() {
+        Ok(player) => player,
+        Err(_) => {
+            let _ = write_response(
+                stream,
+                "500 Internal Server Error",
+                "text/plain; charset=utf-8",
+                b"player state poisoned\n",
+                "",
+            );
+            return;
+        }
+    };
+    if let Some(yaw) = yaw {
+        player.yaw = yaw as f32;
+    }
+    if let Some(pitch) = pitch {
+        player.pitch = (pitch as f32).clamp(-player.params.pitch_limit, player.params.pitch_limit);
+    }
+    player.push_pending = true;
+    let pose = pose_json(&player.pose());
+    drop(player);
+    let body = format!("{{\"pushed\":true,\"pose\":{pose}}}");
+    let _ = write_response(
+        stream,
+        "200 OK",
+        "application/json; charset=utf-8",
+        body.as_bytes(),
+        "",
+    );
+}
+
+fn start_screenshot_server(port: u16, ctx: HttpContext) -> Result<(), String> {
+    let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, port))
+        .map_err(|error| format!("bind GAIA_NATIVE_PORT {port}: {error}"))?;
+    thread::Builder::new()
+        .name("gaia-native-http".into())
+        .spawn(move || {
+            for stream in listener.incoming() {
+                match stream {
+                    Ok(stream) => handle_http(stream, &ctx),
+                    Err(error) => eprintln!("[scry] HTTP accept failed: {error}"),
+                }
+            }
+        })
+        .map_err(|error| format!("spawn scrying HTTP server: {error}"))?;
+    eprintln!(
+        "[scry] GET http://127.0.0.1:{port}/scry (alias: /screenshot; optional pos/yaw/pitch/fov/w/h; lab-only chain: lab=teacher-benchmark)"
+    );
+    eprintln!(
+        "[world-core] POST http://127.0.0.1:{port}/op · GET /world · GET /events"
+    );
+    eprintln!(
+        "[embodiment] GET http://127.0.0.1:{port}/pose · POST http://127.0.0.1:{port}/walk {{keys,yaw?,pitch?,ticks?}}"
+    );
+    Ok(())
+}
+
+struct CaptureSlot {
+    buffer: wgpu::Buffer,
+    busy: Arc<AtomicBool>,
+}
+
+struct OffscreenTarget {
+    texture: wgpu::Texture,
+    view: wgpu::TextureView,
+    slots: Vec<CaptureSlot>,
+    next_slot: usize,
+    padded_bytes_per_row: u32,
+    width: u32,
+    height: u32,
+}
+
+impl OffscreenTarget {
+    fn new(device: &wgpu::Device, format: wgpu::TextureFormat, width: u32, height: u32) -> Self {
+        let texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("screenshot framebuffer"),
+            size: wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+            view_formats: &[],
+        });
+        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let unpadded = width * BYTES_PER_PIXEL;
+        let alignment = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
+        let padded_bytes_per_row = unpadded.div_ceil(alignment) * alignment;
+        let buffer_size = u64::from(padded_bytes_per_row) * u64::from(height);
+        let slots = (0..CAPTURE_SLOT_COUNT)
+            .map(|index| CaptureSlot {
+                buffer: device.create_buffer(&wgpu::BufferDescriptor {
+                    label: Some(match index {
+                        0 => "frame readback 0",
+                        1 => "frame readback 1",
+                        _ => "frame readback 2",
+                    }),
+                    size: buffer_size,
+                    usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+                    mapped_at_creation: false,
+                }),
+                busy: Arc::new(AtomicBool::new(false)),
+            })
+            .collect();
+        Self {
+            texture,
+            view,
+            slots,
+            next_slot: 0,
+            padded_bytes_per_row,
+            width,
+            height,
+        }
+    }
+
+    fn claim_slot(&mut self) -> Option<usize> {
+        for offset in 0..self.slots.len() {
+            let index = (self.next_slot + offset) % self.slots.len();
+            if self.slots[index]
+                .busy
+                .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+                .is_ok()
+            {
+                self.next_slot = (index + 1) % self.slots.len();
+                return Some(index);
+            }
+        }
+        None
+    }
+}
+
+/// NEURAL-LIVE N0.j S13 THE OUTSIDE-9ms HUNT — the frame-loop work that lives
+/// OUTSIDE the per-stage net budget (N0.i named ~9 ms of it): world advance
+/// (skin·tick·splice + BVH re-upload), the per-frame offscreen readback that
+/// feeds `/scry`, and the http/debug servicing on the render thread. Measured
+/// in the render loop (not `NetPresent`, which only sees the GPU stages) and
+/// merged into `/budget` so the throughput gap is finally VISIBLE, not implied.
+/// NEURAL-LIVE S14 (shift 14): the sub-breakdown INSIDE the ~7 ms world
+/// advance — one timer per stage of `advance_world`, so the thief is split
+/// (skin·tick vs gather vs splice vs upload) before it is cut. Filled by
+/// `advance_world` into `Renderer::last_world_stages`, drained by the loop.
+#[derive(Default, Clone, Copy)]
+struct WorldStages {
+    /// `command_bodies_walked` + `tick_with_ops` (skin the bodies, advance solver).
+    skin: f64,
+    /// `command_bodies_walked` alone (SAMA gait + re-skin the body meshes).
+    command: f64,
+    /// `tick_with_ops` alone (dynamics solver step + op application).
+    tick: f64,
+    /// S15 sub-split of `tick`: KAMI decorative eval / apply ops / physics.step
+    /// / re-derive models (`scene.last_tick_breakdown`).
+    kami: f64,
+    apply: f64,
+    physics: f64,
+    rederive: f64,
+    solver_step: f64,
+    poll: f64,
+    /// `dynamic_leaf_triangles_for_eye` (gather the dynamic partition's tris).
+    gather: f64,
+    /// `splice.update` — dynamic refit/rebuild + CPU merge onto the static tree.
+    splice: f64,
+    /// `integrator.update_bvh` — (re)build the GPU node/tri buffers.
+    upload: f64,
+}
+
+#[derive(Default)]
+struct OutsideBudget {
+    /// player.step + set_view_pose + advance_world (skin·tick·splice·upload).
+    world: Vec<f64>,
+    /// S14 sub-breakdown of `world` (skin·tick / gather / splice / upload).
+    w_skin: Vec<f64>,
+    w_command: Vec<f64>,
+    w_tick: Vec<f64>,
+    w_kami: Vec<f64>,
+    w_apply: Vec<f64>,
+    w_physics: Vec<f64>,
+    w_rederive: Vec<f64>,
+    w_solver_step: Vec<f64>,
+    w_poll: Vec<f64>,
+    w_gather: Vec<f64>,
+    w_splice: Vec<f64>,
+    w_upload: Vec<f64>,
+    /// the per-frame offscreen copy_texture_to_buffer + map submit (the
+    /// measurement tax — S13.2 makes it on-demand, so this collapses to ~0).
+    readback: Vec<f64>,
+    /// scry drain + the /budget + /state JSON write on the render thread.
+    http: Vec<f64>,
+    /// the whole iteration wall (frame-start to frame-start), sans deadline
+    /// sleep — the honest per-frame cost the wall-clock fps derives from.
+    loop_total: Vec<f64>,
+    frames: u64,
+}
+
+impl OutsideBudget {
+    fn record(&mut self, world: f64, readback: f64, http: f64, loop_total: f64) {
+        self.world.push(world);
+        self.readback.push(readback);
+        self.http.push(http);
+        self.loop_total.push(loop_total);
+        self.frames += 1;
+    }
+
+    /// S14: record the sub-stage breakdown of the frame's world advance.
+    fn record_world(&mut self, s: WorldStages) {
+        self.w_skin.push(s.skin);
+        self.w_command.push(s.command);
+        self.w_tick.push(s.tick);
+        self.w_kami.push(s.kami);
+        self.w_apply.push(s.apply);
+        self.w_physics.push(s.physics);
+        self.w_rederive.push(s.rederive);
+        self.w_solver_step.push(s.solver_step);
+        self.w_poll.push(s.poll);
+        self.w_gather.push(s.gather);
+        self.w_splice.push(s.splice);
+        self.w_upload.push(s.upload);
+    }
+
+    /// The `"outside"` block spliced into `/budget` (median/p95 per segment).
+    fn json(&self) -> String {
+        format!(
+            "\"outside\":{{\"world\":[{:.3},{:.3}],\"readback\":[{:.3},{:.3}],\
+             \"http\":[{:.3},{:.3}],\"loop_total\":[{:.3},{:.3}]}}",
+            pct(&self.world, 0.5), pct(&self.world, 0.95),
+            pct(&self.readback, 0.5), pct(&self.readback, 0.95),
+            pct(&self.http, 0.5), pct(&self.http, 0.95),
+            pct(&self.loop_total, 0.5), pct(&self.loop_total, 0.95),
+        )
+    }
+
+    /// S14: the `"world_stages"` block (median/p95 per advance sub-stage).
+    fn world_stages_json(&self) -> String {
+        format!(
+            "\"world_stages\":{{\"skin\":[{:.3},{:.3}],\"command\":[{:.3},{:.3}],\
+             \"tick\":[{:.3},{:.3}],\"kami\":[{:.3},{:.3}],\"apply\":[{:.3},{:.3}],\
+             \"physics\":[{:.3},{:.3}],\"rederive\":[{:.3},{:.3}],\
+             \"solver_step\":[{:.3},{:.3}],\"poll\":[{:.3},{:.3}],\"gather\":[{:.3},{:.3}],\
+             \"splice\":[{:.3},{:.3}],\"upload\":[{:.3},{:.3}]}}",
+            pct(&self.w_skin, 0.5), pct(&self.w_skin, 0.95),
+            pct(&self.w_command, 0.5), pct(&self.w_command, 0.95),
+            pct(&self.w_tick, 0.5), pct(&self.w_tick, 0.95),
+            pct(&self.w_kami, 0.5), pct(&self.w_kami, 0.95),
+            pct(&self.w_apply, 0.5), pct(&self.w_apply, 0.95),
+            pct(&self.w_physics, 0.5), pct(&self.w_physics, 0.95),
+            pct(&self.w_rederive, 0.5), pct(&self.w_rederive, 0.95),
+            pct(&self.w_solver_step, 0.5), pct(&self.w_solver_step, 0.95),
+            pct(&self.w_poll, 0.5), pct(&self.w_poll, 0.95),
+            pct(&self.w_gather, 0.5), pct(&self.w_gather, 0.95),
+            pct(&self.w_splice, 0.5), pct(&self.w_splice, 0.95),
+            pct(&self.w_upload, 0.5), pct(&self.w_upload, 0.95),
+        )
+    }
+}
+
+/// NEURAL-LIVE N0.c per-frame stage budget (ms). One frame's cost split across
+/// the pipeline stages the budget table (N0.d) reports.
+#[cfg(target_os = "macos")]
+#[derive(Clone, Copy)]
+struct NetTimings {
+    trace: f64,
+    gather: f64,
+    net: f64,
+    /// CUT 2 GPU demod pass (undo-log-demod), split from the surface blit so
+    /// the budget table can name it separately (S3).
+    demod: f64,
+    present: f64,
+    total: f64,
+}
+
+/// NEURAL-LIVE N0.c CONSTRUCTION SCAFFOLD (dies at lane cutover). Presents the
+/// ONE net's frame in the live window loop. EVERYTHING is pooled ONCE here at
+/// construction — the low-res radiance accum, the native-res AOV, the AOV
+/// readback stage, the net's zero-copy feature/output MTLBuffers (inside
+/// `RdirectLive`), the surface-res present accum, and the CPU upload scratch.
+/// The per-frame path allocates nothing on the heap except the forward's
+/// output `Vec` (owned by N0.a's `forward_shared`, out of this shift's scope)
+/// and two lightweight compute bind groups (the integrator reallocates its
+/// node/tri storage buffers each dynamic tick, so bind groups over them MUST
+/// be rebuilt per frame — wgpu bind groups are handle-weight, not buffer
+/// churn). Sized to the boot surface; the net path self-disables if the
+/// surface ever exceeds the pooled ceiling (resize rebuild is out of scope
+/// for a scaffold that dies at cutover).
+/// V9-WIRE SPEED ROUND (2026-07-25): a net command buffer committed
+/// (`UnetLive::submit_gpu_bridged_async`) but not yet waited, plus the
+/// context `resolve_frame_v9_async` needs once it DOES wait it — which
+/// buffer-set index owns its AOV/E-D-accum, and the camera pose it was
+/// gathered under (for `history.swap` — mirrors the non-v9 pipeline's own
+/// `cam_by_set`).
+#[cfg(target_os = "macos")]
+struct V9Pending {
+    fwd: PendingForward,
+    set: usize,
+    cam: CamPose,
+}
+
+#[cfg(target_os = "macos")]
+struct NetPresent {
+    /// `None` only when `is_v9` (the U-Net body has no `RdirectLive` — see
+    /// `unet` below). Every non-v9 call site is guarded by `is_v9==false`
+    /// (mutually exclusive), so `.as_ref()/.as_mut()` there always hit `Some`.
+    live: Option<RdirectLive>,
+    gather: FeatureGather,
+    /// CUT 2: GPU demod pass (undo-log-demod on the GPU, no CPU round-trip).
+    demod: DemodPass,
+    /// Low-res noisy radiance accum (STORAGE|COPY_SRC|COPY_DST — cleared each
+    /// frame so a moving camera never smears progressive samples).
+    net_accum: wgpu::Buffer,
+    /// Native-res AOV G-buffer (albedo/normal/depth, 2 cells/px). N0.i S13:
+    /// ONE PER SET — the frame overlap demods the PREVIOUS frame's net output,
+    /// so its albedo must be that frame's, not the one trace just wrote. Trace
+    /// writes `net_aov[set]`, gather reads `net_aov[set]`, demod reads
+    /// `net_aov[demod_set]` — albedo stays matched to the radiance's frame.
+    net_aov: Vec<wgpu::Buffer>,
+    /// Surface-res present accum the blit resolves to screen (linear rgb, w=1).
+    /// SHIFT 17 CUT A: a Vec — len 1 on the default (wgpu) demod path, len
+    /// SET_COUNT on the fused path (the native demod writes present[demod_set]
+    /// one frame ahead of the blit, so each set needs its own accum).
+    present_accum: Vec<wgpu::Buffer>,
+    present_blit_bg: Vec<wgpu::BindGroup>,
+    /// SHIFT 17 CUT A: true when the fused native demod is live (attach_demod
+    /// ran, gated by `GAIA_NATIVE_DEMOD_FUSED`). The wgpu `demod` pass is then
+    /// skipped for the presented eye (belief eye still uses it).
+    fused: bool,
+    /// SHIFT 17 CUT B: true when the two intermediate trace GPU polls are
+    /// removed (gated by `GAIA_NATIVE_ASYNC_TRACE`) — the three trace/gather
+    /// dispatches pipeline on the GPU, the render thread spin-waits once (before
+    /// the fence signal) instead of thrice. V9-WIRE LEVER 1 (2026-07-26,
+    /// audit-confirmed dead until now): `resolve_frame_v9`/`_async` read this
+    /// too — same removal, same reasoning (trace-clear+split and aov ride the
+    /// SAME wgpu queue, FIFO-ordered, no CPU round-trip needed between them);
+    /// the ONE poll before the gather+pack submit's own consumer
+    /// (`forward_gpu_bridged`/`submit_gpu_bridged_async`, which crosses into
+    /// Metal via the zero-copy bridge) stays unconditional in both — load-
+    /// bearing per `UnetLive::submit_gpu_bridged_async`'s own doc (needs a
+    /// CPU-observed-complete pack write even across the queue boundary).
+    async_trace: bool,
+    /// V7-LIVE LANE STAGE 1: true when the GPU E/D evidence split runs
+    /// alongside the ordinary 23-in trace+gather (gated by
+    /// `GAIA_NATIVE_EVIDENCE_SPLIT`, default OFF — the 23-in path below is
+    /// byte-identical when this is false; nothing new is even allocated).
+    /// Purely additive/observational this stage: the net still forwards the
+    /// 23-in `feats`/gather output only; `net_feats_split` is not read by
+    /// anything downstream yet (Stage 3 wires a 39-in net + history to it).
+    evidence_split: bool,
+    /// V7-LIVE LANE STAGE 1: split-radiance trace accumulation (2 vec4
+    /// cells/px — E sum+count, D sum+count), mirrors `net_accum` but for
+    /// `integrator::dispatch_split` / `integrate_split`. `None` unless
+    /// `evidence_split`.
+    net_accum_ed: Option<wgpu::Buffer>,
+    /// V7-LIVE LANE STAGE 1: the 35-feature (`INPUT_FEATURES_SPLIT`) split
+    /// gather destination — mirrors the 23-in `feats` pooled buffer inside
+    /// `RdirectLive`, but pooled HERE (not net-forward-bound this stage).
+    /// `None` unless `evidence_split`.
+    net_feats_split: Option<wgpu::Buffer>,
+    /// V7-LIVE LANE STAGE 1: the split gather compute pass. `None` unless
+    /// `evidence_split`.
+    gather_split: Option<FeatureGatherSplit>,
+    /// V7-LIVE LANE STAGE 3: true when the loaded net is the 39-in
+    /// (`HIST_FEATURES_SPLIT`) recurrent split net (`live.in_features() ==
+    /// HIST_FEATURES_SPLIT`). Requires `evidence_split` (checked at
+    /// construction — see `NetPresent::new`'s guard). When true the gather
+    /// stage below drives `hist_gather`/`history`/`evidence` instead of the
+    /// 23-in `gather`/observational Stage-1 `gather_split`.
+    is_v7: bool,
+    /// V9 EYE-TEST WINDOW BUILD (2026-07-24): true when the loaded weights are
+    /// the U-Net body (`GAIARD9\0` magic, `unet: Some`). Mutually exclusive
+    /// with `is_v7` (both read `net_accum_ed`/`history`/`evidence`/
+    /// `out_dl_padded` — shared allocation, see `NetPresent::new`'s
+    /// `is_v7 || is_v9` guard — but drive them from `resolve_frame_v9`, a
+    /// SEPARATE synchronous method `resolve_frame` dispatches to first, never
+    /// touching `live`/`hist_gather`/the S9 pipeline fields below).
+    is_v9: bool,
+    /// V9 EYE-TEST WINDOW BUILD: the U-Net body's live MPSGraph (zero-copy
+    /// wgpu-bridged, `forward_gpu_bridged`). `None` unless `is_v9`.
+    unet: Option<UnetLive>,
+    /// V9 EYE-TEST WINDOW BUILD: the 41-in GPU-native gather pass
+    /// (`gather_v9`, `HIST_FEATURES_SPLIT` + real motion vectors). `None`
+    /// unless `is_v9`.
+    v9_gather: Option<FeatureGatherV9>,
+    /// V9 EYE-TEST WINDOW BUILD: packs `v9_feats` (f32) into
+    /// `unet`'s `feature_buf_u32()` (fp16-as-u32) — the zero-copy bridge's
+    /// other half. `None` unless `is_v9`.
+    v9_packer: Option<Fp16Packer>,
+    /// V9 EYE-TEST WINDOW BUILD: the f32 gather destination `v9_gather`
+    /// writes (41-wide rows), `v9_packer` then packs into the U-Net's own
+    /// fp16 input MTLBuffer. `None` unless `is_v9`.
+    v9_feats: Option<wgpu::Buffer>,
+    /// V9 EYE-TEST WINDOW BUILD: this frame's net output AFTER the CPU-side
+    /// hit-gate compose (no-hit px replaced by the evidence composite, exactly
+    /// `settle()`'s inference-time rule — see `resolve_frame_v9`'s doc) — the
+    /// buffer `demod` actually reads. `None` unless `is_v9`.
+    v9_net_out_gated: Option<wgpu::Buffer>,
+    /// V9 EYE-TEST WINDOW BUILD: `GAIA_V9N_HITGATE` read once at construction
+    /// — the v9t weights this atom targets were TRAINED with this gate ON
+    /// (probe-equals-live law: the caller MUST set it to match).
+    v9_hitgate: bool,
+    /// V9-WIRE GPU FUSE (task mandate, 2026-07-25): the fused GPU hit-gate
+    /// compose pass (`rdirect_v9_compose::V9ComposePass`). `None` unless
+    /// `is_v9`.
+    v9_compose: Option<V9ComposePass>,
+    /// V9-WIRE GPU FUSE: scratch GPU buffer holding THIS frame's raw net
+    /// output (`[n,3]`, uploaded once from the MPSGraph readback) — the
+    /// fused compose pass's input; the CPU path never touches it. `None`
+    /// unless `is_v9`.
+    v9_net_out_raw: Option<wgpu::Buffer>,
+    /// V9-WIRE GPU FUSE: `GAIA_V9_COMPOSE` read once at construction —
+    /// `"gpu"` routes `resolve_frame_v9`'s compose stage through
+    /// `v9_compose`; anything else (default, IRON) keeps the CPU
+    /// `compose_cpu_reference` path byte-identical to the pre-fuse behavior.
+    v9_compose_gpu: bool,
+    /// V9-WIRE SPEED ROUND (2026-07-25) IRON: `GAIA_V9_ASYNC` read once at
+    /// construction. `false` (default/unset) = `resolve_frame_v9` (old
+    /// serial, byte-identical); `true` = `resolve_frame_v9_async` (LEVER
+    /// 1+2: async net submit on a dedicated queue + one-frame-deep
+    /// trace/gather-vs-net overlap, mirroring `RdirectLive`'s own proven S9
+    /// double-buffer shape). `None` fields below stay `None` unless this is set.
+    v9_async: bool,
+    /// V9-WIRE SPEED ROUND LEVER 2 (2026-07-26): `GAIA_V9_TRACE_REUSE` read
+    /// once at construction. `false` (default/unset, IRON) = old two-pass
+    /// behavior: `resolve_frame_v9`/`_async` run BOTH the composite
+    /// `integrator.dispatch` (fills `net_accum`) AND the split
+    /// `integrator.dispatch_split` (fills `net_accum_ed`) every frame, even
+    /// though `net_accum` is dead for `is_v9` (confirmed by audit + grep:
+    /// `FeatureGatherV9::encode`/`v9_hitgate_compose`/the GPU
+    /// `V9ComposePass` all read only `net_accum_ed` + `net_aov`, never
+    /// `net_accum` — the composite `integrate()` dispatch is a full second
+    /// BVH trace pass whose output nothing downstream ever reads). `true` =
+    /// skip that dispatch (and its clear) entirely; `net_accum`'s bind group
+    /// is still built (the shared @group(0) layout `dispatch_split`/
+    /// `dispatch_aov` also bind requires the binding present) but the
+    /// buffer's stale/garbage contents are never consumed. Since gather
+    /// (`v9_gather.encode`) never took `net_accum` as an input either way,
+    /// this is not a "derive from E+D" substitution — it is a straight
+    /// removal of dead work, so the gather-input tensor is BIT-IDENTICAL
+    /// on/off by construction (parity harness:
+    /// `examples/v9_ed_composite_parity.rs`).
+    v9_trace_reuse: bool,
+    /// V9-WIRE SPEED ROUND: buffer-set-1 AOV (native albedo/normal/depth) —
+    /// `net_aov[0]` is set-0 (shared field, already used by the sync path).
+    /// `None` unless `is_v9 && v9_async`.
+    v9_net_aov_b: Option<wgpu::Buffer>,
+    /// V9-WIRE SPEED ROUND: buffer-set-1 low-res split E/D accum —
+    /// `net_accum_ed` (shared field) is set-0. `None` unless `is_v9 && v9_async`.
+    v9_net_accum_ed_b: Option<wgpu::Buffer>,
+    /// V9-WIRE SPEED ROUND: buffer-set-1 f32 gather destination — `v9_feats`
+    /// is set-0. `None` unless `is_v9 && v9_async`.
+    v9_feats_b: Option<wgpu::Buffer>,
+    /// V9-WIRE SPEED ROUND: the net commit currently in flight (committed on
+    /// `UnetLive`'s dedicated `net_queue`, not yet waited) — waited + composed
+    /// at the START of the NEXT `resolve_frame_v9_async` call (or when the
+    /// rig is torn down, simply dropped/never presented — the same
+    /// "output-or-nothing" tradeoff `RdirectLive::commit_net`'s own doc
+    /// names for its first frame). `None` when nothing is pending (very
+    /// first async frame, or immediately after being drained).
+    v9_pending: Option<V9Pending>,
+    /// V7-LIVE LANE STAGE 3: the 39-in recurrent-history gather pass. `None`
+    /// unless `is_v7`.
+    hist_gather: Option<FeatureGatherHistSplit>,
+    /// V7-LIVE LANE STAGE 3: GPU-resident ping-pong history (previous
+    /// frame's net output + AOV + camera). `None` unless `is_v7`.
+    history: Option<HistoryBuffers>,
+    /// V7-LIVE LANE STAGE 3: evidence-clamp compute passes (accumulate +
+    /// clamp-present + the out_dl repack for the history swap). `None`
+    /// unless `is_v7`.
+    evidence: Option<EvidenceClamp>,
+    /// V7-LIVE LANE STAGE 3: persistent native-res temporal-mean numerator
+    /// (`rdirect::EvidenceAccum`'s `sum`, GPU-resident) — one vec4/px, added
+    /// to every frame by `evidence.encode_accumulate`. `None` unless `is_v7`.
+    evidence_sum: Option<wgpu::Buffer>,
+    /// V7-LIVE LANE STAGE 3: frames folded into `evidence_sum` so far (the
+    /// `EvidenceAccum::n` mirror) — divides the clamp ceiling.
+    evidence_count: u32,
+    /// V7-LIVE LANE STAGE 3: scratch vec4-padded buffer
+    /// (`FeatureGatherHistSplit::out_dl_bytes(n)` sized) the pack pass writes
+    /// before `history.swap` copies it into `history.prev_out_dl`. `None`
+    /// unless `is_v7`.
+    out_dl_padded: Option<wgpu::Buffer>,
+    /// V7-LIVE LANE STAGE 3: the camera pose used when buffer-set `i` was
+    /// last GATHERED (indexed by buffer set, not frame) — the frame-overlap
+    /// pipeline means the net output finishing THIS iteration (`dset`) was
+    /// gathered a past iteration, under a DIFFERENT camera than this
+    /// iteration's own `cur_cam`; `history.swap` needs THAT pose to remember
+    /// as `prev_cam` for the next reprojection, not the current one.
+    cam_by_set: Vec<Option<CamPose>>,
+    low_w: u32,
+    low_h: u32,
+    target_w: u32,
+    target_h: u32,
+    n: usize,
+    /// S12.5: the buffer set the last frame's net wrote (for the belief eye).
+    last_set: usize,
+    // Rolling per-stage budget samples for the N0.d table.
+    s_trace: Vec<f64>,
+    s_gather: Vec<f64>,
+    s_net: Vec<f64>,
+    /// S3 instrument: the net forward's GPU-only ms (MTLCommandBuffer GPU
+    /// timestamps), split from `s_net` (the wall around the blocking call).
+    s_net_gpu: Vec<f64>,
+    /// N0.i S13 probe: the net stage's wall split — commit CPU ms (critical
+    /// path) and downstream wait ms (overlap-hidden). Where the ~8.5 ms hides.
+    s_net_commit: Vec<f64>,
+    s_net_wait: Vec<f64>,
+    s_demod: Vec<f64>,
+    s_present: Vec<f64>,
+    s_total: Vec<f64>,
+    frames: u64,
+    /// N0.i S13 THROUGHPUT: wall-clock start of the first recorded frame, for
+    /// the frames/second-over-the-whole-run figure (the throughput truth).
+    wall_start: Option<Instant>,
+    /// V7-LIVE LANE PERF ROOM 7: per-frame timing series dump, env-gated
+    /// (`GAIA_FRAME_CSV=<path>`, default OFF — `None` means the room 6 p95-tail
+    /// diagnostic is disabled and `record()` does zero extra work). Diagnostic
+    /// only: root-attributing the p95 tail needs the RAW per-frame series
+    /// (periodic vs random spike spacing), not the cumulative median/p95 the
+    /// `[n0i]` line already prints — that line can't tell a fixed cadence from
+    /// a constant-rate random process (both look like a flat cumulative p95).
+    frame_csv_path: Option<String>,
+    /// Buffered in RAM, ONE push per frame (no per-frame I/O — the CSV write
+    /// itself happens once, on flush). Columns match `budget_json`'s stages:
+    /// (frame, trace, gather, net_wall, net_gpu, net_commit, net_wait, demod,
+    /// present, total) ms.
+    frame_csv_rows: Vec<(u64, f64, f64, f64, f64, f64, f64, f64, f64, f64)>,
+}
+
+// SAFETY: `NetPresent` embeds `RdirectLive` (an MPSGraph handle + Metal
+// buffers), which is not auto-`Send` because Objective-C objects are
+// thread-affine. This rig is built lazily ON the render thread and every
+// method that touches it (`net_present_frame` → `resolve_frame`) runs ONLY on
+// that thread — `Renderer` is moved once into the render worker and never
+// shared or accessed from another thread afterward (the HTTP/screenshot
+// threads read the shared `latest` frame, never the `Renderer`). So the
+// MPSGraph is never used from two threads; marking the field `Send` (needed
+// only so the one-time `Renderer` move compiles) is sound. Scaffold: dies at
+// cutover.
+#[cfg(target_os = "macos")]
+unsafe impl Send for NetPresent {}
+
+// V7-LIVE LANE STAGE 3: reprojection guards, same values the CPU parity
+// reference (`examples/real_image_ordeal.rs`, the ordeal that stamped
+// 55720b45) and the Stage-2 probes use — not re-derived here.
+#[cfg(target_os = "macos")]
+const V7_DEPTH_TOL: f32 = 0.05;
+#[cfg(target_os = "macos")]
+const V7_NORMAL_THRESH: f32 = 0.85;
+
+/// V7-LIVE LANE STAGE 3: build a `rdirect::CamPose` from the live window
+/// camera — field-for-field the same conversion `examples/v7_live_hist_probe.rs`
+/// uses (`cam_pose`), duplicated here since this crate's `main.rs` binary
+/// doesn't share code with `examples/`.
+#[cfg(target_os = "macos")]
+fn v7_cam_pose(cam: &Camera, w: u32, h: u32) -> CamPose {
+    let (right, up, forward) = cam.basis();
+    CamPose {
+        eye: cam.eye,
+        right,
+        up,
+        forward,
+        half_tan: (cam.fov_y_radians * 0.5).tan(),
+        aspect: w as f32 / h.max(1) as f32,
+    }
+}
+
+#[cfg(target_os = "macos")]
+impl NetPresent {
+    /// Pool everything once. `low_*` is the trace resolution, `target_*` the
+    /// surface (present) resolution the net upscales to.
+    fn new(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        integrator: &Integrator,
+        low_w: u32,
+        low_h: u32,
+        target_w: u32,
+        target_h: u32,
+    ) -> Result<Self, String> {
+        let n = (target_w as usize) * (target_h as usize);
+        // STAGE B: DEFAULT WEIGHTS = v2 (N1 SHIP, 5x64 @640×480, ~2× better
+        // held-out). v1 stays on disk, env-selectable for the Architect's A/B:
+        // GAIA_NATIVE_WEIGHTS=v1 | v2 | <relative path under the crate>. A
+        // missing/unreadable file returns Err → net_present_frame Err →
+        // present_black (Pleroma-or-BLACK: this is how "force Pleroma
+        // unavailable" yields a pure-black window).
+        // N3 REAL IMAGE BAR: default = v4 (v3 arch + the spatial FIREFLY LOSS —
+        // must EARN a real-image ordeal PASS stamp to present). v3/v2/v1 remain
+        // env-selectable for the Architect's A/B, but ALL of them face the gate.
+        let weights_sel = std::env::var("GAIA_NATIVE_WEIGHTS").unwrap_or_else(|_| "v4".to_string());
+        let weights_file = match weights_sel.as_str() {
+            "v1" => "data/rdirect-weights-v1.bin".to_string(),
+            "v2" => "data/rdirect-weights-v2.bin".to_string(),
+            "v3" => "data/rdirect-weights-v3.bin".to_string(),
+            "v4" => "data/rdirect-weights-v4.bin".to_string(),
+            // v7-live lane STAGE 3: 39-in split-recurrent net. Loadable now that
+            // RdirectLive::build derives in_features from the weights' own first
+            // layer instead of hardcoding INPUT_FEATURES (see rdirect_live.rs).
+            // NOTE: the frame loop below (gather/history/clamp) is still the
+            // 23-in composite path — selecting v7 here loads the net but the
+            // live present path does not yet feed it 39-feature rows or apply
+            // the evidence clamp (STAGE 3 TODO, scratch/v7-live-lane.md §5).
+            "v7" => "data/rdirect-weights-v7.bin".to_string(),
+            other => other.to_string(),
+        };
+        let weights_abs = Path::new(env!("CARGO_MANIFEST_DIR")).join(&weights_file);
+        let weights = std::fs::read(&weights_abs)
+            .map_err(|e| format!("read rdirect weights ({weights_file}): {e}"))?;
+        // THE REAL IMAGE BAR (Architect, 2026-07-18): REAL OR BLACK. Present is
+        // GATED on the weights carrying a PASS stamp from the real-image ordeal
+        // (residual-vs-teacher + sparkle bars). Unstamped / failing / tampered
+        // weights → Err → present_black. NO env override — the bar models HIS eye
+        // — EXCEPT `GAIA_EYE_TEST=1` (2026-07-24, Pascal's own explicit ask,
+        // this build only): his eye IS the bar he's asking to consult, so an
+        // unordealed checkpoint may present, loudly logged, never silently.
+        let stamp = scrying_glass::rdirect::stamp_path_for(&weights_abs);
+        let eye_test = matches!(
+            std::env::var("GAIA_EYE_TEST").as_deref(),
+            Ok("1" | "true" | "on")
+        );
+        if !scrying_glass::rdirect::verify_stamp(&weights, &stamp) {
+            if eye_test {
+                eprintln!(
+                    "[EYE-TEST UNSTAMPED] weights {weights_file} carry no PASS stamp ({}) — presenting anyway per GAIA_EYE_TEST=1 (Pascal's own explicit override, NOT an ordeal pass, NOT the shipped bar)",
+                    stamp.display()
+                );
+            } else {
+                return Err(format!(
+                    "REAL-IMAGE BAR: weights {weights_file} carry no PASS stamp ({}) — present BLACK by law (real or black)",
+                    stamp.display()
+                ));
+            }
+        }
+        // V9 EYE-TEST WINDOW BUILD (2026-07-24): dispatch by the weights blob's
+        // OWN magic bytes, not the (MLP-only) `GAIA_NATIVE_WEIGHTS` shorthand
+        // above — `rdirect_unet::cpu`'s serializer stamps `GAIARD9\0`
+        // (`rdirect.rs`'s MLP serializer stamps `GAIARDR1`), so a v9 U-Net
+        // checkpoint self-identifies regardless of how its path was selected
+        // (shorthand or a full `GAIA_NATIVE_WEIGHTS=<path>`).
+        const UNET_MAGIC: &[u8; 8] = b"GAIARD9\0";
+        let is_unet = weights.len() >= 8 && &weights[0..8] == UNET_MAGIC;
+        if is_unet {
+            return Self::new_v9(device, queue, integrator, &weights, &weights_file, low_w, low_h, target_w, target_h, n);
+        }
+        let live = RdirectLive::from_wgpu_queue(device, queue, &weights, n)?;
+        // v7-live lane STAGE 3 guard: the frame loop below (FeatureGather ->
+        // live.forward -> DemodPass) is still hard-wired to the 23-in composite
+        // gather/present act. RdirectLive::build now LOADS any in_features shape
+        // the weights carry (v7's 39-in split-recurrent included), but feeding a
+        // 39-wide net a 23-wide gathered row is a silent stride mismatch, not a
+        // safe smaller act — REAL OR BLACK bars a wrong image, not just an
+        // unstamped one. Refuse here instead of building a corrupted pipeline
+        // until the gather_hist_split -> net -> evidence-clamp wiring lands
+        // (scratch/v7-live-lane.md §4 STAGE 3 items 2-4).
+        // v7-live lane STAGE 3: the frame loop now drives BOTH shapes. 23-in
+        // (INPUT_FEATURES) keeps the original composite gather byte-untouched.
+        // 39-in (HIST_FEATURES_SPLIT) is the v7 recurrent split net -- it needs
+        // the split trace (GAIA_NATIVE_EVIDENCE_SPLIT) to feed gather_hist_split
+        // (net_accum_ed) below; refuse (present BLACK, REAL OR BLACK) rather
+        // than build a half-wired pipeline if that flag is off. Any OTHER
+        // in_features (a future/unknown architecture) still refuses exactly as
+        // before.
+        let is_v7 = live.in_features() == HIST_FEATURES_SPLIT;
+        if live.in_features() != INPUT_FEATURES && !is_v7 {
+            return Err(format!(
+                "v7-live lane STAGE 3: weights {weights_file} want {}-in, which is neither the \
+                 shipped {}-in composite net nor the {}-in v7 recurrent-split net -- present BLACK \
+                 rather than a corrupted stride-mismatched image",
+                live.in_features(),
+                INPUT_FEATURES,
+                HIST_FEATURES_SPLIT
+            ));
+        }
+        if is_v7
+            && !matches!(
+                std::env::var("GAIA_NATIVE_EVIDENCE_SPLIT").as_deref(),
+                Ok("1" | "true" | "on")
+            )
+        {
+            return Err(format!(
+                "v7-live lane STAGE 3: weights {weights_file} are the {}-in v7 net, which needs \
+                 GAIA_NATIVE_EVIDENCE_SPLIT=1 (drives the split trace + gather_hist_split feeding \
+                 it) -- present BLACK rather than a corrupted stride-mismatched image",
+                HIST_FEATURES_SPLIT
+            ));
+        }
+        // SHIFT 17 CUT A: opt into the fused native demod (encode the demod on
+        // the net's OWN queue right after the forward, killing N0.m's
+        // cross-queue demod tail). MUST run BEFORE `start_pipeline`. Returns the
+        // per-set AOV + present SHARED MTLBuffers wrapped as wgpu (the same
+        // buffers the native demod binds). Default OFF — baseline untouched.
+        // SHIFT 18: fused native demod is the DEFAULT (CUT A, +4 fps, kills the
+        // N0.m demod tail). Opt OUT with `GAIA_NATIVE_DEMOD_FUSED=0` for the
+        // baseline wgpu-demod A/B.
+        let fused = !matches!(
+            std::env::var("GAIA_NATIVE_DEMOD_FUSED").as_deref(),
+            Ok("0" | "false" | "off")
+        );
+        let mut fused_aov: Option<Vec<wgpu::Buffer>> = None;
+        let mut fused_present: Option<Vec<wgpu::Buffer>> = None;
+        if fused {
+            let (aov, present) = live.attach_demod(device, n)?;
+            fused_aov = Some(aov);
+            fused_present = Some(present);
+        }
+        // S9: spin up the encode thread so the ~14 ms MPSGraph per-frame encode
+        // rides a background thread while the render thread does GPU work. After
+        // this the net is driven via `begin_frame` (pick set) + `commit_net`
+        // (commit the pre-encoded buffer + wait) instead of `forward_shared_gpu`.
+        live.start_pipeline()?;
+        let gather = FeatureGather::new(device);
+        let demod = DemodPass::new(device);
+
+        let low_cells = (low_w as u64) * (low_h as u64);
+        let net_accum = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("net-present low accum"),
+            size: low_cells.max(1) * 16, // ACCUM_CELL = vec4<f32>
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_SRC
+                | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        // N0.i S13: one AOV per buffer set (frame-overlap demod matches albedo
+        // to the radiance's frame). Same count as the net's double-buffer sets.
+        // SHIFT 17 CUT A: on the fused path these ARE the shared MTLBuffers the
+        // native demod reads (trace writes them via wgpu; demod reads them via
+        // Metal) — one physical buffer, two views.
+        let net_aov: Vec<wgpu::Buffer> = fused_aov.unwrap_or_else(|| {
+            (0..live.set_count())
+                .map(|_| integrator.make_aov_buffer(device, target_w, target_h))
+                .collect()
+        });
+        // SHIFT 17 CUT A: per-set present accum on the fused path (the native
+        // demod writes present[demod_set] a frame ahead of the blit); a single
+        // accum on the default wgpu-demod path (demod→blit are same-frame).
+        let present_accum: Vec<wgpu::Buffer> = fused_present.unwrap_or_else(|| {
+            vec![device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("net-present surface accum"),
+                size: (n as u64).max(1) * 16,
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            })]
+        });
+        let present_blit_bg: Vec<wgpu::BindGroup> = present_accum
+            .iter()
+            .map(|a| integrator.blit_bind_group(device, a))
+            .collect();
+
+        let async_trace = matches!(
+            std::env::var("GAIA_NATIVE_ASYNC_TRACE").as_deref(),
+            Ok("1" | "true" | "on")
+        );
+        // V7-LIVE LANE STAGE 1: GPU E/D evidence split, additive/observational
+        // only (see the struct field docs above) — default OFF so the shipped
+        // 23-in path allocates nothing new and runs byte-identical.
+        let evidence_split = matches!(
+            std::env::var("GAIA_NATIVE_EVIDENCE_SPLIT").as_deref(),
+            Ok("1" | "true" | "on")
+        );
+        let (net_accum_ed, net_feats_split, gather_split_pass) = if evidence_split && !is_v7 {
+            (
+                Some(integrator.make_split_buffer(device, low_w, low_h)),
+                Some(device.create_buffer(&wgpu::BufferDescriptor {
+                    label: Some("net-present split feats (35-in, no history)"),
+                    size: FeatureGatherSplit::feature_bytes(n).max(1),
+                    usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+                    mapped_at_creation: false,
+                })),
+                Some(FeatureGatherSplit::new(device)),
+            )
+        } else {
+            (None, None, None)
+        };
+        // V7-LIVE LANE STAGE 3: the real 39-in wiring. `net_accum_ed` (split
+        // trace) is shared with Stage 1's dispatch above but allocated HERE
+        // instead when `is_v7` (Stage 1's own 35-in observational buffers stay
+        // unallocated — nothing reads them once the real net is live).
+        let (net_accum_ed, hist_gather, history, evidence, evidence_sum, out_dl_padded) = if is_v7 {
+            let accum_ed = integrator.make_split_buffer(device, low_w, low_h);
+            let hist_gather = FeatureGatherHistSplit::new(device);
+            let history = HistoryBuffers::new(device, target_w, target_h);
+            let evidence = EvidenceClamp::new(device);
+            let evidence_sum = device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("v7 evidence temporal-mean sum (native res)"),
+                size: EvidenceClamp::sum_bytes(n).max(1),
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+            let out_dl_padded = device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("v7 net out_dl (vec4-padded, history swap source)"),
+                size: FeatureGatherHistSplit::out_dl_bytes(n).max(1),
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+            (
+                Some(accum_ed),
+                Some(hist_gather),
+                Some(history),
+                Some(evidence),
+                Some(evidence_sum),
+                Some(out_dl_padded),
+            )
+        } else {
+            (net_accum_ed, None, None, None, None, None)
+        };
+        let cam_by_set = vec![None; live.set_count()];
+        Ok(Self {
+            fused,
+            async_trace,
+            evidence_split,
+            is_v7,
+            is_v9: false,
+            unet: None,
+            v9_gather: None,
+            v9_packer: None,
+            v9_feats: None,
+            v9_net_out_gated: None,
+            v9_hitgate: false,
+            v9_compose: None,
+            v9_net_out_raw: None,
+            v9_compose_gpu: false,
+            v9_async: false,
+            v9_trace_reuse: false,
+            v9_net_aov_b: None,
+            v9_net_accum_ed_b: None,
+            v9_feats_b: None,
+            v9_pending: None,
+            net_accum_ed,
+            net_feats_split,
+            gather_split: gather_split_pass,
+            hist_gather,
+            history,
+            evidence,
+            evidence_sum,
+            evidence_count: 0,
+            out_dl_padded,
+            cam_by_set,
+            live: Some(live),
+            gather,
+            demod,
+            net_accum,
+            net_aov,
+            present_accum,
+            present_blit_bg,
+            low_w,
+            low_h,
+            target_w,
+            target_h,
+            n,
+            last_set: 0,
+            s_trace: Vec::new(),
+            s_gather: Vec::new(),
+            s_net: Vec::new(),
+            s_net_gpu: Vec::new(),
+            s_net_commit: Vec::new(),
+            s_net_wait: Vec::new(),
+            s_demod: Vec::new(),
+            s_present: Vec::new(),
+            s_total: Vec::new(),
+            frames: 0,
+            wall_start: None,
+            frame_csv_path: std::env::var("GAIA_FRAME_CSV")
+                .ok()
+                .filter(|s| !s.is_empty()),
+            frame_csv_rows: Vec::new(),
+        })
+    }
+
+    /// V9 EYE-TEST WINDOW BUILD (2026-07-24): the U-Net body's construction
+    /// path, split out of `new` at the magic-byte dispatch point above.
+    /// Builds a SYNCHRONOUS, non-pipelined present rig (no S9 double-buffer
+    /// overlap — `UnetLive::forward_gpu_bridged` commits+waits inline,
+    /// `resolve_frame_v9` drives it) — an eye-test build, not the shipped-perf
+    /// shape `RdirectLive`'s S9 pipeline is. `net_accum_ed`/`history`/
+    /// `evidence`/`out_dl_padded` are the SAME allocations the v7 lane uses
+    /// (shared struct fields, mutually exclusive `is_v7`/`is_v9`).
+    #[allow(clippy::too_many_arguments)]
+    fn new_v9(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        integrator: &Integrator,
+        weights: &[u8],
+        weights_file: &str,
+        low_w: u32,
+        low_h: u32,
+        target_w: u32,
+        target_h: u32,
+        n: usize,
+    ) -> Result<Self, String> {
+        let uw = rdirect_unet::cpu::deserialize_weights(weights).ok_or_else(|| {
+            format!("v9 EYE-TEST WIRING: failed to parse U-Net weights blob ({weights_file}) despite matching GAIARD9 magic")
+        })?;
+        // The conv body is fully resolution-independent (SAME-padded convs +
+        // explicit-size bilinear resizes, no literal spatial dim in the graph
+        // builder — rdirect_unet.rs module doc) — the trained checkpoint's own
+        // `render_w/h` (the SMALL training res, e.g. 128x72) is NOT what this
+        // live window should compile at; override to the window's own canvas
+        // so the graph matches what `gather_v9` actually produces per frame.
+        // render==output mirrors the training config's own invariant (v9t was
+        // trained render==output, so no `out_refine` layer is required either way).
+        let mut uw = uw;
+        uw.config.render_w = target_w as usize;
+        uw.config.render_h = target_h as usize;
+        uw.config.output_w = target_w as usize;
+        uw.config.output_h = target_h as usize;
+        let unet = UnetLive::from_wgpu_queue(device, queue, &uw)?;
+
+        // v9's gather (`gather_v9`) reads the split E/D trace — same
+        // requirement the v7 lane already documents/enforces for its own
+        // `gather_hist_split`.
+        if !matches!(
+            std::env::var("GAIA_NATIVE_EVIDENCE_SPLIT").as_deref(),
+            Ok("1" | "true" | "on")
+        ) {
+            return Err(format!(
+                "v9 EYE-TEST WIRING: weights {weights_file} are the v9 U-Net body, which needs \
+                 GAIA_NATIVE_EVIDENCE_SPLIT=1 (drives the split trace gather_v9 reads) -- present \
+                 BLACK rather than a corrupted/empty pipeline"
+            ));
+        }
+        // v9t's own training compose (probe-equals-live law, task mandate):
+        // GAIA_V9N_HITGATE=1 (no-hit px := evidence exactly, net's own output
+        // discarded there) is the ONLY compose surgery this atom wires —
+        // v9t's own v9p/v9q dark-hit deltas were BOTH 0 (scratch/v9t-train.log
+        // line 9-11: DARK_CAP_DELTA=0, DESPECKLE_DELTA=0), so dark-hit px are a
+        // no-op pass-through of the net's raw output at this checkpoint
+        // specifically — not reimplemented here (nothing to do).
+        let v9_hitgate = matches!(
+            std::env::var("GAIA_V9N_HITGATE").as_deref(),
+            Ok("1" | "true" | "on")
+        );
+        if !v9_hitgate {
+            eprintln!(
+                "[v9-eye-test] WARNING: GAIA_V9N_HITGATE is not set — v9t was TRAINED with the \
+                 hit-gate ON (scratch/v9t-train.log line 9); presenting WITHOUT it is not the \
+                 training-time compose (probe-equals-live violated). Set GAIA_V9N_HITGATE=1."
+            );
+        }
+        // CLAMP PARITY (task mandate, 2026-07-25): v9y was trained with
+        // GAIA_V9V_INPUT_CLAMP=0.10 (scratch/v9y-train.log, v9body). Loudly
+        // report what this launch actually wired into `gather_v9` (see
+        // `rdirect::v9v_input_clamp_delta` / `FeatureGatherV9::encode`).
+        let v9v_input_clamp = scrying_glass::rdirect::v9v_input_clamp_delta();
+        if v9v_input_clamp > 0.0 {
+            eprintln!(
+                "[v9-eye-test] GAIA_V9V_INPUT_CLAMP={v9v_input_clamp} — clamp ACTIVE in gather_v9's \
+                 WGSL E/D tap blocks (median-of-4+delta ceiling, ported from \
+                 rdirect_train_v9k.rs::apply_input_clamp)."
+            );
+        } else {
+            eprintln!(
+                "[v9-eye-test] WARNING: GAIA_V9V_INPUT_CLAMP is not set (or <=0.0) — v9y was \
+                 TRAINED with GAIA_V9V_INPUT_CLAMP=0.10 (scratch/v9y-train.log); presenting \
+                 without it feeds unclamped 1-spp fireflies the checkpoint never saw at input. \
+                 Set GAIA_V9V_INPUT_CLAMP=0.10."
+            );
+        }
+
+        let net_accum_ed = integrator.make_split_buffer(device, low_w, low_h);
+        let history = HistoryBuffers::new(device, target_w, target_h);
+        let evidence = EvidenceClamp::new(device); // only `encode_pack` is used (history repack)
+        let evidence_sum = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("v9 evidence sum (unused — struct-shared alloc, v7's own clamp semantics don't apply)"),
+            size: EvidenceClamp::sum_bytes(n).max(1),
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let out_dl_padded = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("v9 net out_dl (vec4-padded, history swap source)"),
+            size: FeatureGatherHistSplit::out_dl_bytes(n).max(1),
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        let v9_gather = FeatureGatherV9::new(device);
+        let v9_packer = Fp16Packer::new(device);
+        let v9_feats = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("v9 gather feats (f32, 41-wide rows)"),
+            size: FeatureGatherV9::feature_bytes(n).max(1),
+            usage: wgpu::BufferUsages::STORAGE,
+            mapped_at_creation: false,
+        });
+        let v9_net_out_gated = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("v9 hit-gated net out (tight [n,3])"),
+            size: ((n as u64).max(1)) * 12,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        // V9-WIRE GPU FUSE (task mandate, 2026-07-25): GAIA_V9_COMPOSE=gpu
+        // routes resolve_frame_v9's hit-gate compose through one WGSL compute
+        // dispatch instead of the CPU readback+loop+reupload
+        // (compose_cpu_reference). Default (unset/anything else) = cpu, the
+        // IRON pre-fuse behavior, byte-identical.
+        let v9_compose_gpu = matches!(std::env::var("GAIA_V9_COMPOSE").as_deref(), Ok("gpu"));
+        eprintln!(
+            "[v9-eye-test] GAIA_V9_COMPOSE={} -- hit-gate compose runs on the {}",
+            if v9_compose_gpu { "gpu" } else { "cpu (default)" },
+            if v9_compose_gpu { "GPU (fused, no AOV/E-D readback)" } else { "CPU (readback + loop + reupload)" }
+        );
+        let v9_compose = V9ComposePass::new(device);
+        let v9_net_out_raw = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("v9 raw net out (fused-compose GPU source, [n,3])"),
+            size: ((n as u64).max(1)) * 12,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        // V9-WIRE SPEED ROUND (2026-07-25) IRON: GAIA_V9_ASYNC=1 builds the
+        // SECOND buffer set (AOV/E-D-accum/feats) `resolve_frame_v9_async`
+        // needs to overlap trace/gather(N+1) under net(N)'s still-in-flight
+        // GPU forward. Default/unset = false, no extra allocation at all —
+        // `resolve_frame_v9` (old serial path) stays byte-identical.
+        let v9_async = matches!(std::env::var("GAIA_V9_ASYNC").as_deref(), Ok("1" | "true" | "on"));
+        eprintln!(
+            "[v9-eye-test] GAIA_V9_ASYNC={} -- {}",
+            if v9_async { "1" } else { "0 (default)" },
+            if v9_async {
+                "async net submit (dedicated queue) + 1-frame trace/gather-vs-net overlap"
+            } else {
+                "serial (old, byte-identical) resolve_frame_v9"
+            }
+        );
+        // V9-WIRE LEVER 1 (2026-07-26): audit-confirmed dead here until now
+        // — `new` (the non-v9 lane) already reads GAIA_NATIVE_ASYNC_TRACE, but
+        // `new_v9` hardcoded `async_trace: false`, so `resolve_frame_v9`/
+        // `_async` never removed their mid-trace polls no matter the env.
+        // Wired identically to `new`'s own read.
+        let async_trace = matches!(
+            std::env::var("GAIA_NATIVE_ASYNC_TRACE").as_deref(),
+            Ok("1" | "true" | "on")
+        );
+        eprintln!(
+            "[v9-eye-test] GAIA_NATIVE_ASYNC_TRACE={} -- {}",
+            if async_trace { "1" } else { "0 (default)" },
+            if async_trace {
+                "mid-trace polls removed, composite-clear+split -> aov pipeline back-to-back"
+            } else {
+                "serial (old, byte-identical) trace stage polling"
+            }
+        );
+        // V9-WIRE LEVER 2 (2026-07-26): see the struct field's own doc —
+        // default off = old two-pass behavior (byte-identical).
+        let v9_trace_reuse = matches!(std::env::var("GAIA_V9_TRACE_REUSE").as_deref(), Ok("1" | "true" | "on"));
+        eprintln!(
+            "[v9-eye-test] GAIA_V9_TRACE_REUSE={} -- {}",
+            if v9_trace_reuse { "1" } else { "0 (default)" },
+            if v9_trace_reuse {
+                "composite integrate() trace dispatch SKIPPED (net_accum unread downstream for is_v9; only net_accum_ed feeds the gather)"
+            } else {
+                "serial (old, byte-identical): composite + split trace both dispatch every frame"
+            }
+        );
+        let (v9_net_aov_b, v9_net_accum_ed_b, v9_feats_b) = if v9_async {
+            (
+                Some(integrator.make_aov_buffer(device, target_w, target_h)),
+                Some(integrator.make_split_buffer(device, low_w, low_h)),
+                Some(device.create_buffer(&wgpu::BufferDescriptor {
+                    label: Some("v9 gather feats set-1 (f32, 41-wide rows, async)"),
+                    size: FeatureGatherV9::feature_bytes(n).max(1),
+                    usage: wgpu::BufferUsages::STORAGE,
+                    mapped_at_creation: false,
+                })),
+            )
+        } else {
+            (None, None, None)
+        };
+
+        let gather = FeatureGather::new(device); // unused by is_v9 (struct-shared field type)
+        let demod = DemodPass::new(device); // REUSED (v9's own hit-gated buffer feeds it)
+
+        let low_cells = (low_w as u64) * (low_h as u64);
+        let net_accum = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("v9 low accum (unused — struct-shared field, only the split trace matters)"),
+            size: low_cells.max(1) * 16,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let net_aov: Vec<wgpu::Buffer> = vec![integrator.make_aov_buffer(device, target_w, target_h)];
+        let present_accum: Vec<wgpu::Buffer> = vec![device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("v9 present surface accum"),
+            size: (n as u64).max(1) * 16,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        })];
+        let present_blit_bg: Vec<wgpu::BindGroup> = present_accum
+            .iter()
+            .map(|a| integrator.blit_bind_group(device, a))
+            .collect();
+
+        Ok(Self {
+            fused: false,
+            async_trace,
+            evidence_split: true,
+            is_v7: false,
+            is_v9: true,
+            unet: Some(unet),
+            v9_gather: Some(v9_gather),
+            v9_packer: Some(v9_packer),
+            v9_feats: Some(v9_feats),
+            v9_net_out_gated: Some(v9_net_out_gated),
+            v9_hitgate,
+            v9_compose: Some(v9_compose),
+            v9_net_out_raw: Some(v9_net_out_raw),
+            v9_compose_gpu,
+            v9_async,
+            v9_trace_reuse,
+            v9_net_aov_b,
+            v9_net_accum_ed_b,
+            v9_feats_b,
+            v9_pending: None,
+            net_accum_ed: Some(net_accum_ed),
+            net_feats_split: None,
+            gather_split: None,
+            hist_gather: None,
+            history: Some(history),
+            evidence: Some(evidence),
+            evidence_sum: Some(evidence_sum),
+            evidence_count: 0,
+            out_dl_padded: Some(out_dl_padded),
+            cam_by_set: vec![None; 1],
+            live: None,
+            gather,
+            demod,
+            net_accum,
+            net_aov,
+            present_accum,
+            present_blit_bg,
+            low_w,
+            low_h,
+            target_w,
+            target_h,
+            n,
+            last_set: 0,
+            s_trace: Vec::new(),
+            s_gather: Vec::new(),
+            s_net: Vec::new(),
+            s_net_gpu: Vec::new(),
+            s_net_commit: Vec::new(),
+            s_net_wait: Vec::new(),
+            s_demod: Vec::new(),
+            s_present: Vec::new(),
+            s_total: Vec::new(),
+            frames: 0,
+            wall_start: None,
+            frame_csv_path: std::env::var("GAIA_FRAME_CSV")
+                .ok()
+                .filter(|s| !s.is_empty()),
+            frame_csv_rows: Vec::new(),
+        })
+    }
+
+    /// SHIFT 17 CUT A: the present blit bind group for buffer set `set` (its
+    /// present accum). One accum on the default path; per-set on the fused path.
+    fn present_bg_for(&self, set: usize) -> &wgpu::BindGroup {
+        &self.present_blit_bg[if self.fused { set } else { 0 }]
+    }
+    /// SHIFT 17 CUT A: the present accum buffer for buffer set `set`.
+    fn present_accum_for(&self, set: usize) -> &wgpu::Buffer {
+        &self.present_accum[if self.fused { set } else { 0 }]
+    }
+
+    /// Trace → gather → forward → undo-log-demod, leaving `present_accum`
+    /// filled and `integrator.uniform_buf` set for a 1:1 nearest present blit.
+    /// Returns (trace, gather, net, resolve) ms; the final blit+present is timed
+    /// by the caller and folded into the `present` stage.
+    #[allow(clippy::too_many_arguments)]
+    fn resolve_frame(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        integrator: &Integrator,
+        uni_low: &IntegratorUniform,
+        uni_target: &IntegratorUniform,
+        blit_uniform: &IntegratorUniform,
+        cur_cam: CamPose,
+    ) -> (f64, f64, f64, f64) {
+        // V9 EYE-TEST WINDOW BUILD (2026-07-24): the U-Net body has no S9
+        // pipeline (`live` is None) — dispatch to the separate synchronous
+        // method before anything below touches `self.live`.
+        if self.is_v9 {
+            if self.v9_async {
+                return self.resolve_frame_v9_async(device, queue, integrator, uni_low, uni_target, blit_uniform, cur_cam);
+            }
+            return self.resolve_frame_v9(device, queue, integrator, uni_low, uni_target, blit_uniform, cur_cam);
+        }
+        // S9: claim this frame's pre-encoded net command buffer. Returns the
+        // buffer SET the gather must fill; the net (committed in the net stage
+        // below) reads THIS set, so evidence stays this frame's own (0 latency).
+        // Near-instant in steady state (the pipeline stays primed).
+        let set = self.live.as_ref().expect("non-v9 path: live is Some").begin_frame();
+
+        // Bind groups over the integrator's node/tri buffers (reallocated each
+        // dynamic tick) — rebuilt per frame, handle-weight.
+        let accum_bg = integrator.compute_bind_group(device, &self.net_accum);
+        // N0.i S13: trace + gather touch THIS frame's set's AOV.
+        let aov_bg = integrator.aov_bind_group(device, &self.net_aov[set]);
+
+        // —— STAGE: trace (low radiance + native AOV) ——
+        let t0 = Instant::now();
+        let mut enc = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("net trace: clear+accum"),
+        });
+        enc.clear_buffer(&self.net_accum, 0, None);
+        integrator.dispatch(queue, &mut enc, uni_low, &accum_bg, self.low_w, self.low_h);
+        // V7-LIVE LANE STAGE 1: additive E/D split trace, same encoder (FIFO
+        // on this queue, so ordering vs the composite dispatch above needs no
+        // extra sync) — only when `evidence_split` opted in; the composite
+        // `net_accum` path above is untouched either way.
+        if self.evidence_split {
+            if let Some(net_accum_ed) = &self.net_accum_ed {
+                enc.clear_buffer(net_accum_ed, 0, None);
+                let split_bg = integrator.split_bind_group(device, net_accum_ed);
+                integrator.dispatch_split(
+                    queue, &mut enc, uni_low, &accum_bg, &split_bg, self.low_w, self.low_h,
+                );
+            }
+        }
+        queue.submit(Some(enc.finish()));
+        // SHIFT 17 CUT B — ASYNC TRACE: the two intermediate render-thread GPU
+        // polls (after clear+accum, after aov) exist only to time the sub-stages
+        // separately; they are NOT needed for correctness (clear+accum → aov →
+        // gather all ride the SAME wgpu render queue, which is FIFO, so each
+        // reads the prior's output on the GPU with no CPU round-trip). Removing
+        // them lets the GPU pipeline the three dispatches back-to-back and frees
+        // the render thread of two spin-waits per frame. The ONE poll that stays
+        // (after gather, below) is load-bearing: `signal_gather_ready` CPU-
+        // signals the gather→net fence, which is only truthful once the feature
+        // buffer is GPU-complete (N0.h). Opt-in: `GAIA_NATIVE_ASYNC_TRACE`.
+        if !self.async_trace {
+            let _ = device.poll(wgpu::PollType::wait_indefinitely());
+        }
+        let mut enc = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("net trace: aov"),
+        });
+        integrator.dispatch_aov(
+            queue,
+            &mut enc,
+            uni_target,
+            &accum_bg,
+            &aov_bg,
+            self.target_w,
+            self.target_h,
+        );
+        queue.submit(Some(enc.finish()));
+        if !self.async_trace {
+            let _ = device.poll(wgpu::PollType::wait_indefinitely());
+        }
+        let trace_ms = t0.elapsed().as_secs_f64() * 1000.0;
+
+        // —— STAGE: gather (GPU feature build → pooled shared MTLBuffer) ——
+        let feats = self
+            .live
+            .as_ref()
+            .expect("non-v9 path: live is Some")
+            .feature_buffer_set(set)
+            .expect("net-present pooled feature buffer");
+        let t1 = Instant::now();
+        if self.is_v7 {
+            // V7-LIVE LANE STAGE 3: the 39-in recurrent path. `feats` is sized
+            // for HIST_FEATURES_SPLIT (RdirectLive::build derives in_features
+            // from the loaded weights) — the 23-in composite `gather` below
+            // would write the wrong stride into it, so it must NOT run here.
+            let net_accum_ed = self
+                .net_accum_ed
+                .as_ref()
+                .expect("v7: split trace accum (checked at construction)");
+            let hist_gather = self
+                .hist_gather
+                .as_ref()
+                .expect("v7: hist_gather (checked at construction)");
+            let history = self.history.as_ref().expect("v7: history (checked at construction)");
+            let prev_cam = history.prev_cam.unwrap_or(cur_cam);
+            let mut enc = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("net gather hist split"),
+            });
+            hist_gather.encode(
+                device,
+                queue,
+                &mut enc,
+                net_accum_ed,
+                &self.net_aov[set],
+                feats,
+                &history.prev_out_dl,
+                &history.prev_aov,
+                cur_cam,
+                prev_cam,
+                history.has_prev,
+                history.w,
+                history.h,
+                V7_DEPTH_TOL,
+                V7_NORMAL_THRESH,
+                self.low_w,
+                self.low_h,
+                self.target_w,
+                self.target_h,
+            );
+            queue.submit(Some(enc.finish()));
+            let _ = device.poll(wgpu::PollType::wait_indefinitely());
+            self.cam_by_set[set] = Some(cur_cam);
+        } else {
+            let mut enc = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("net gather"),
+            });
+            self.gather.encode(
+                device,
+                queue,
+                &mut enc,
+                &self.net_accum,
+                &self.net_aov[set],
+                feats,
+                self.low_w,
+                self.low_h,
+                self.target_w,
+                self.target_h,
+            );
+            queue.submit(Some(enc.finish()));
+            let _ = device.poll(wgpu::PollType::wait_indefinitely());
+            // V7-LIVE LANE STAGE 1: additive split gather (35-in, no history)
+            // into `net_feats_split` — observational only (non-v7 debug A/B;
+            // the v7 path above uses `hist_gather` instead).
+            if self.evidence_split {
+                if let (Some(net_accum_ed), Some(net_feats_split), Some(gs)) =
+                    (&self.net_accum_ed, &self.net_feats_split, &self.gather_split)
+                {
+                    let mut enc_split = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                        label: Some("net gather split"),
+                    });
+                    gs.encode(
+                        device,
+                        queue,
+                        &mut enc_split,
+                        net_accum_ed,
+                        &self.net_aov[set],
+                        net_feats_split,
+                        self.low_w,
+                        self.low_h,
+                        self.target_w,
+                        self.target_h,
+                    );
+                    queue.submit(Some(enc_split.finish()));
+                    let _ = device.poll(wgpu::PollType::wait_indefinitely());
+                }
+            }
+        }
+        let gather_ms = t1.elapsed().as_secs_f64() * 1000.0;
+
+        // S12: release the gather→net fence on the render queue now the gather
+        // is done, so the net command buffer waiting on it (on the dedicated
+        // net queue) can run. This is the ONE cross-queue hazard the queue
+        // split introduces (net→demod stays a CPU fence via commit_net).
+        self.live.as_ref().expect("non-v9 path: live is Some").signal_gather_ready();
+
+        // —— STAGE: net (N0.i S13 FRAME OVERLAP) ———————————————————————————
+        // `commit_net` commits THIS frame's pre-encoded buffer (for `set`, which
+        // the gather just filled) WITHOUT blocking — its GPU forward now overlaps
+        // the NEXT frame's trace+gather — and WAITS the PREVIOUS frame's buffer,
+        // whose net ran during THIS frame's trace+gather and is (near-)complete.
+        // So `net_ms` (wall) now measures ≈ commit(cur) + wait(prev, overlapped).
+        // GPU-only ms is the completed PREVIOUS buffer's timestamps. The demod
+        // consumes that finished buffer's set — one frame of DISPLAY latency, and
+        // the presented image is always the COMPLETE image of its own frame's
+        // evidence (output-or-nothing). `None` only on the first frame.
+        let t2 = Instant::now();
+        let demod_set = self.live.as_ref().expect("non-v9 path: live is Some").commit_net().expect("net commit_net");
+        let net_ms = t2.elapsed().as_secs_f64() * 1000.0;
+        let net_gpu_ms = self.live.as_ref().expect("non-v9 path: live is Some").last_gpu_ms();
+
+        // —— STAGE: resolve (CUT 2 GPU demod — no AOV readback, no CPU loop) ——
+        // One compute dispatch: reads the FINISHED net output MTLBuffer (the
+        // previous frame's `demod_set`, zero-copy wgpu view) + its AOV albedo,
+        // undoes the log-demod, writes present_accum. Skipped on the first frame
+        // (demod_set None) — present_accum stays as-is (black on boot).
+        let t3 = Instant::now();
+        // V7-LIVE LANE STAGE 3 (fps room): fold THIS frame's own low-res E/D
+        // trace into the persistent temporal-mean evidence sum every v7
+        // frame — mirrors rdirect.rs `EvidenceAccum::push` being called once
+        // per rendered frame in the CPU reference. HONEST ASYNC CAVEAT: the
+        // CPU reference accumulates evidence[f] and clamps frame f's OWN net
+        // output in lock-step; this pipeline's frame overlap means the net
+        // output finishing THIS iteration (`dset`) was actually GATHERED ~1
+        // iteration ago, so the clamp below applies the CURRENT running
+        // sum/count (already includes this iteration's own composite) to a
+        // frame-old net output — a ~1-frame lag on a slow temporal-mean
+        // filter, not a semantic difference. See scratch/v7-live-lane.md.
+        //
+        // FPS ROOM: accumulate + (non-fused demod) + clamp + pack + swap are
+        // now ONE command encoder / ONE submission — no mid-frame
+        // `device.poll(wait_indefinitely())` between them. wgpu tracks
+        // resource usage within a command buffer and inserts the hazard
+        // sync itself (evidence_sum written by accumulate then read by
+        // clamp; out_dl_padded written by pack then read by swap all
+        // resolve on-GPU without a CPU round-trip) — same house pattern as
+        // SHIFT 17 CUT B's async trace (removing polls that exist only to
+        // time sub-stages, not for correctness, since everything here rides
+        // one FIFO queue). No CPU code reads these buffers back this frame,
+        // so no poll is needed at all: the NEXT frame's own poll(s) (trace
+        // stage, `commit_net`'s wait) transitively catch this submission up
+        // before anything downstream depends on it. Semantics unchanged —
+        // only sync strategy changed; re-verified via
+        // `v7_present_parity_probe` after this edit (see lane note).
+        if self.is_v7 {
+            let net_accum_ed = self.net_accum_ed.as_ref().expect("v7: net_accum_ed");
+            let evidence = self.evidence.as_ref().expect("v7: evidence");
+            let evidence_sum = self.evidence_sum.as_ref().expect("v7: evidence_sum");
+            let mut enc = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("v7 evidence resolve (accumulate+demod+clamp+pack+swap)"),
+            });
+            evidence.encode_accumulate(
+                queue, device, &mut enc, net_accum_ed, evidence_sum,
+                self.low_w, self.low_h, self.target_w, self.target_h,
+            );
+            self.evidence_count += 1;
+            if let Some(dset) = demod_set {
+                // SHIFT 17 CUT A: on the fused path the native demod ALREADY
+                // ran on the net queue (in `commit_net`) and wrote
+                // present_accum[dset] — no wgpu demod here either way.
+                if !self.fused {
+                    let net_out = self
+                        .live
+                        .as_ref()
+                        .expect("non-v9 path: live is Some")
+                        .output_buffer_set(dset)
+                        .expect("net-present pooled output buffer");
+                    self.demod.encode(
+                        device,
+                        queue,
+                        &mut enc,
+                        net_out,
+                        &self.net_aov[dset],
+                        &self.present_accum[0],
+                        self.n as u32,
+                        false, // presented (undo albedo demod); belief eye is /scry?eye=belief
+                    );
+                }
+                // Evidence clamp at present (in-place on whichever
+                // present_accum slot the demod just filled) + recurrent
+                // history swap. History gets this frame's RAW/UNCLAMPED
+                // out_dl (matches the CPU reference's `prev = Some((out_dl,
+                // ...))` — the clamp is presentation-only, never fed back).
+                let out_dl_padded = self.out_dl_padded.as_ref().expect("v7: out_dl_padded");
+                let net_out = self
+                    .live
+                    .as_ref()
+                    .expect("non-v9 path: live is Some")
+                    .output_buffer_set(dset)
+                    .expect("v7: net-present pooled output buffer");
+                let gamma = scrying_glass::rdirect::evidence_clamp_gamma();
+                let present = self.present_accum_for(dset);
+                evidence.encode_clamp(
+                    queue, device, &mut enc, evidence_sum, present,
+                    self.target_w, self.target_h, self.evidence_count, gamma,
+                );
+                evidence.encode_pack(queue, device, &mut enc, net_out, out_dl_padded, self.n as u32);
+
+                let swap_cam = self.cam_by_set[dset].unwrap_or(cur_cam);
+                let history = self.history.as_mut().expect("v7: history");
+                history.swap(&mut enc, out_dl_padded, &self.net_aov[dset], swap_cam, self.target_w, self.target_h);
+
+                // S12.5: remember which set the presented frame came from,
+                // so a /scry?eye=belief capture re-demods THAT net output in
+                // belief mode, and (fused) the blit picks
+                // present_accum[last_set].
+                self.last_set = dset;
+            }
+            queue.submit(Some(enc.finish()));
+        } else if let Some(dset) = demod_set {
+            // Non-v7 path, unchanged: demod is the only wgpu work here
+            // (skipped when fused, same as above), one submission.
+            if !self.fused {
+                let net_out = self
+                    .live
+                    .as_ref()
+                    .expect("non-v9 path: live is Some")
+                    .output_buffer_set(dset)
+                    .expect("net-present pooled output buffer");
+                let mut enc = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("net demod"),
+                });
+                self.demod.encode(
+                    device,
+                    queue,
+                    &mut enc,
+                    net_out,
+                    &self.net_aov[dset],
+                    &self.present_accum[0],
+                    self.n as u32,
+                    false, // presented (undo albedo demod); belief eye is /scry?eye=belief
+                );
+                queue.submit(Some(enc.finish()));
+                let _ = device.poll(wgpu::PollType::wait_indefinitely());
+            }
+            self.last_set = dset;
+        }
+        // The present blit resolves present_accum (w=1) 1:1 nearest to screen.
+        queue.write_buffer(&integrator.uniform_buf, 0, bytemuck::bytes_of(blit_uniform));
+        let resolve_ms = t3.elapsed().as_secs_f64() * 1000.0;
+        self.s_net_gpu.push(net_gpu_ms);
+        // N0.i S13 probe: the net wall = commit(cur, critical) + wait(prev,
+        // overlap-hidden). Split them so the doc can name where the gap lives.
+        self.s_net_commit.push(self.live.as_ref().expect("non-v9 path: live is Some").last_commit_ms());
+        self.s_net_wait.push(self.live.as_ref().expect("non-v9 path: live is Some").last_wait_ms());
+
+        (trace_ms, gather_ms, net_ms, resolve_ms)
+    }
+
+    /// V9 EYE-TEST WINDOW BUILD (2026-07-24): trace → gather_v9 →
+    /// forward_gpu_bridged → CPU hit-gate compose → demod, leaving
+    /// `present_accum[0]` filled. SYNCHRONOUS (no S9 double-buffer overlap) —
+    /// an eye-test shape, not the shipped-perf one; `RdirectLive`'s pipeline
+    /// stays byte-untouched for v1-v4/v7 (`resolve_frame` above).
+    ///
+    /// HIT-GATE COMPOSE (probe-equals-live law, task mandate): v9t's own
+    /// `settle()` (examples/rdirect_v9t_visual.rs, examples/rdirect_train_v9k.rs)
+    /// replaces the net's raw output with the evidence composite EXACTLY at
+    /// no-hit px (depth<=0) — `GAIA_V9N_HITGATE=1`'s architectural cure — and
+    /// leaves every hit px as the net's own raw output (v9t's own v9o/v9p/v9q
+    /// dark-hit deltas were trained at 0, i.e. no-ops for THIS checkpoint,
+    /// scratch/v9t-train.log lines 9-11). This reads back `net_aov`+
+    /// `net_accum_ed` to the CPU once per frame to do that substitution
+    /// (`v9_hitgate_compose`) — the honest, unoptimized eye-test cost; a
+    /// shipped-perf version would do this on the GPU (not this atom's scope).
+    #[allow(clippy::too_many_arguments)]
+    fn resolve_frame_v9(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        integrator: &Integrator,
+        uni_low: &IntegratorUniform,
+        uni_target: &IntegratorUniform,
+        blit_uniform: &IntegratorUniform,
+        cur_cam: CamPose,
+    ) -> (f64, f64, f64, f64) {
+        let accum_bg = integrator.compute_bind_group(device, &self.net_accum);
+        let aov_bg = integrator.aov_bind_group(device, &self.net_aov[0]);
+        let net_accum_ed = self.net_accum_ed.as_ref().expect("is_v9: net_accum_ed");
+
+        // —— STAGE: trace (split E/D low radiance + native AOV) ——
+        let t0 = Instant::now();
+        let mut enc = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("v9 trace: clear+split accum"),
+        });
+        // V9-WIRE LEVER 2: the composite `integrate()` dispatch is dead work
+        // for is_v9 (see `v9_trace_reuse`'s field doc) — skip it entirely
+        // under the opt-in; `accum_bg` still binds `net_accum` (shared
+        // @group(0) layout `dispatch_split`/`dispatch_aov` require) but its
+        // stale contents are never read downstream.
+        if !self.v9_trace_reuse {
+            enc.clear_buffer(&self.net_accum, 0, None);
+            integrator.dispatch(queue, &mut enc, uni_low, &accum_bg, self.low_w, self.low_h);
+        }
+        enc.clear_buffer(net_accum_ed, 0, None);
+        let split_bg = integrator.split_bind_group(device, net_accum_ed);
+        integrator.dispatch_split(queue, &mut enc, uni_low, &accum_bg, &split_bg, self.low_w, self.low_h);
+        queue.submit(Some(enc.finish()));
+        // V9-WIRE LEVER 1: mirrors `resolve_frame`'s own SHIFT 17 CUT B —
+        // clear+split and aov ride the SAME wgpu queue (FIFO), so this poll
+        // exists only to time the trace sub-stage, not for correctness.
+        if !self.async_trace {
+            let _ = device.poll(wgpu::PollType::wait_indefinitely());
+        }
+        let mut enc = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("v9 trace: aov"),
+        });
+        integrator.dispatch_aov(queue, &mut enc, uni_target, &accum_bg, &aov_bg, self.target_w, self.target_h);
+        queue.submit(Some(enc.finish()));
+        if !self.async_trace {
+            let _ = device.poll(wgpu::PollType::wait_indefinitely());
+        }
+        let trace_ms = t0.elapsed().as_secs_f64() * 1000.0;
+
+        // —— STAGE: gather (41-in GPU-native) + fp16 pack into the bridge ——
+        let t1 = Instant::now();
+        let v9_gather = self.v9_gather.as_ref().expect("is_v9: v9_gather");
+        let v9_packer = self.v9_packer.as_ref().expect("is_v9: v9_packer");
+        let v9_feats = self.v9_feats.as_ref().expect("is_v9: v9_feats");
+        let unet = self.unet.as_ref().expect("is_v9: unet");
+        let history = self.history.as_ref().expect("is_v9: history");
+        let prev_cam = history.prev_cam.unwrap_or(cur_cam);
+        let feature_buf_u32 = unet
+            .feature_buf_u32()
+            .expect("is_v9: unet built via from_wgpu_queue (bridge present)");
+        let mut enc = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("v9 gather + fp16 pack"),
+        });
+        v9_gather.encode(
+            device,
+            queue,
+            &mut enc,
+            net_accum_ed,
+            &self.net_aov[0],
+            v9_feats,
+            &history.prev_out_dl,
+            &history.prev_aov,
+            cur_cam,
+            prev_cam,
+            history.has_prev,
+            history.w,
+            history.h,
+            V7_DEPTH_TOL,
+            V7_NORMAL_THRESH,
+            self.low_w,
+            self.low_h,
+            self.target_w,
+            self.target_h,
+        );
+        let n_in_elems = self.n * unet.config().in_channels;
+        v9_packer.encode(device, &mut enc, v9_feats, feature_buf_u32, n_in_elems);
+        queue.submit(Some(enc.finish()));
+        let _ = device.poll(wgpu::PollType::wait_indefinitely());
+        let gather_ms = t1.elapsed().as_secs_f64() * 1000.0;
+
+        // —— STAGE: net (zero-copy bridged forward, synchronous) ——
+        let t2 = Instant::now();
+        let (net_gpu_ms, net_out) = unet
+            .forward_gpu_bridged()
+            .expect("v9: forward_gpu_bridged");
+        let net_ms = t2.elapsed().as_secs_f64() * 1000.0;
+        if std::env::var("GAIA_V9_NET_PROBE").as_deref() == Ok("1") && self.frames % 60 == 0 {
+            eprintln!(
+                "[v9-net-probe] wall={:.3} gpu={:.3} encode_commit={:.3} wait={:.3} readout={:.3}",
+                net_ms, net_gpu_ms, unet.last_encode_commit_ms(), unet.last_wait_ms(), unet.last_readout_ms()
+            );
+        }
+
+        // —— STAGE: resolve (hit-gate compose [cpu default / gpu fused] → GPU demod) ——
+        let t3 = Instant::now();
+        let net_out_gated = self.v9_net_out_gated.as_ref().expect("is_v9: v9_net_out_gated");
+        let mut enc = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("v9 compose + demod + history repack/swap"),
+        });
+        if self.v9_compose_gpu {
+            // V9-WIRE GPU FUSE (task mandate, 2026-07-25): one CPU->GPU write
+            // for the net's own raw output (unavoidable — the MPSGraph
+            // output readback `forward_gpu_bridged` already did, see
+            // rdirect_unet::run_compiled_forward's doc), then the WHOLE
+            // hit-gate compose runs as one WGSL compute dispatch in THIS
+            // encoder — no AOV/E-D readback, no CPU loop, no extra submit.
+            let net_out_raw = self.v9_net_out_raw.as_ref().expect("is_v9+gpu-compose: v9_net_out_raw");
+            queue.write_buffer(net_out_raw, 0, bytemuck::cast_slice(&net_out));
+            let compose = self.v9_compose.as_ref().expect("is_v9+gpu-compose: v9_compose");
+            compose.encode(
+                device, queue, &mut enc,
+                net_out_raw, &self.net_aov[0], net_accum_ed, net_out_gated,
+                self.n as u32, self.low_w, self.low_h, self.target_w, self.target_h,
+                self.v9_hitgate,
+            );
+        } else {
+            // CPU DEFAULT (IRON, GAIA_V9_COMPOSE unset or != "gpu"): GPU->CPU
+            // readback of AOV + split E/D, compose_cpu_reference, CPU->GPU
+            // reupload — byte-identical to the pre-fuse behavior.
+            let gated = self.v9_hitgate_compose(device, queue, &net_out, &self.net_aov[0], net_accum_ed);
+            queue.write_buffer(net_out_gated, 0, bytemuck::cast_slice(&gated));
+        }
+        self.demod.encode(
+            device,
+            queue,
+            &mut enc,
+            net_out_gated,
+            &self.net_aov[0],
+            &self.present_accum[0],
+            self.n as u32,
+            false, // presented (undo albedo demod)
+        );
+        // Repack the (tight [n,3]) gated output into the vec4-padded scratch
+        // `history.swap` reads, then swap — SAME two-step v7's own resolve
+        // uses (`EvidenceClamp::encode_pack` is generic, not v7-specific).
+        let evidence = self.evidence.as_ref().expect("is_v9: evidence (encode_pack only)");
+        let out_dl_padded = self.out_dl_padded.as_ref().expect("is_v9: out_dl_padded");
+        evidence.encode_pack(queue, device, &mut enc, net_out_gated, out_dl_padded, self.n as u32);
+        let history = self.history.as_mut().expect("is_v9: history");
+        history.swap(&mut enc, out_dl_padded, &self.net_aov[0], cur_cam, self.target_w, self.target_h);
+        queue.submit(Some(enc.finish()));
+        let _ = device.poll(wgpu::PollType::wait_indefinitely());
+
+        queue.write_buffer(&integrator.uniform_buf, 0, bytemuck::bytes_of(blit_uniform));
+        let resolve_ms = t3.elapsed().as_secs_f64() * 1000.0;
+        self.last_set = 0;
+        self.s_net_gpu.push(net_gpu_ms);
+        self.s_net_commit.push(net_ms);
+        self.s_net_wait.push(0.0);
+
+        (trace_ms, gather_ms, net_ms, resolve_ms)
+    }
+
+    /// V9-WIRE SPEED ROUND (2026-07-25) LEVER 1+2 — async twin of
+    /// `resolve_frame_v9`. SAME stage math/compose/demod/history-swap code
+    /// paths — the only difference is SCHEDULING: this call's own net
+    /// forward is SUBMITTED on `UnetLive`'s dedicated queue and NOT waited
+    /// here; instead the PREVIOUS call's still-pending net (submitted last
+    /// call, whose GPU forward has been running in the background —
+    /// concurrently, on its own queue — throughout THIS call's own
+    /// trace+gather) is waited + composed/demoded/presented now. Two buffer
+    /// SETS (0/1, alternating on `self.frames`) keep the in-flight set's
+    /// AOV/E-D-accum/feature buffer untouched while the OTHER set's
+    /// trace/gather writes fresh data (see `v9_net_aov_b` et al.'s field
+    /// docs, and `V9Pending`).
+    ///
+    /// TEMPORAL HISTORY LAG (by design, matches `RdirectLive`'s own S13
+    /// `cam_by_set` precedent — its doc: "the net output finishing THIS
+    /// iteration was gathered a PAST iteration, under a different camera"):
+    /// `history.swap` for frame i-1 now runs one CALL later than in the
+    /// serial path, so `gather`'s own `history.prev_*` is one frame staler
+    /// under motion. The PRESENTED pixel pairing stays exactly correct
+    /// (frame i-1's own trace/camera composes with frame i-1's own net
+    /// output) — "frame N presents frame N's trace" holds; only the
+    /// reprojection SOURCE recency changes, the same tradeoff v7's own
+    /// proven pipeline already ships. Numeric consequence: sync vs async
+    /// output is bit-identical ONLY under a STATIC camera (history content
+    /// is then the same regardless of which past frame it came from) — the
+    /// parity check this atom's task mandates uses a static probe for
+    /// exactly this reason.
+    ///
+    /// FIRST CALL: no pending exists yet — nothing is composed/presented
+    /// this call (`present_accum[0]` keeps its previous — zero-initialized
+    /// on boot — contents), matching `RdirectLive::commit_net`'s own
+    /// documented "output-or-nothing" first-frame behavior.
+    #[allow(clippy::too_many_arguments)]
+    fn resolve_frame_v9_async(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        integrator: &Integrator,
+        uni_low: &IntegratorUniform,
+        uni_target: &IntegratorUniform,
+        blit_uniform: &IntegratorUniform,
+        cur_cam: CamPose,
+    ) -> (f64, f64, f64, f64) {
+        let set = (self.frames as usize) % 2;
+        let aov_buf: &wgpu::Buffer = if set == 0 {
+            &self.net_aov[0]
+        } else {
+            self.v9_net_aov_b.as_ref().expect("v9_async: v9_net_aov_b")
+        };
+        let accum_ed_buf: &wgpu::Buffer = if set == 0 {
+            self.net_accum_ed.as_ref().expect("is_v9: net_accum_ed")
+        } else {
+            self.v9_net_accum_ed_b.as_ref().expect("v9_async: v9_net_accum_ed_b")
+        };
+        let feats_buf: &wgpu::Buffer = if set == 0 {
+            self.v9_feats.as_ref().expect("is_v9: v9_feats")
+        } else {
+            self.v9_feats_b.as_ref().expect("v9_async: v9_feats_b")
+        };
+
+        let accum_bg = integrator.compute_bind_group(device, &self.net_accum);
+        let aov_bg = integrator.aov_bind_group(device, aov_buf);
+
+        // —— STAGE: trace (split E/D low radiance + native AOV), buffer set `set` ——
+        let t0 = Instant::now();
+        let mut enc = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("v9-async trace: clear+split accum"),
+        });
+        // V9-WIRE LEVER 2: see `resolve_frame_v9`'s identical guard — `net_accum`
+        // is not even double-buffered per `set` (only accum_ed/aov/feats are),
+        // confirming it never carries cross-set live state.
+        if !self.v9_trace_reuse {
+            enc.clear_buffer(&self.net_accum, 0, None);
+            integrator.dispatch(queue, &mut enc, uni_low, &accum_bg, self.low_w, self.low_h);
+        }
+        enc.clear_buffer(accum_ed_buf, 0, None);
+        let split_bg = integrator.split_bind_group(device, accum_ed_buf);
+        integrator.dispatch_split(queue, &mut enc, uni_low, &accum_bg, &split_bg, self.low_w, self.low_h);
+        queue.submit(Some(enc.finish()));
+        // V9-WIRE LEVER 1: see `resolve_frame_v9`'s identical guard.
+        if !self.async_trace {
+            let _ = device.poll(wgpu::PollType::wait_indefinitely());
+        }
+        let mut enc = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("v9-async trace: aov"),
+        });
+        integrator.dispatch_aov(queue, &mut enc, uni_target, &accum_bg, &aov_bg, self.target_w, self.target_h);
+        queue.submit(Some(enc.finish()));
+        if !self.async_trace {
+            let _ = device.poll(wgpu::PollType::wait_indefinitely());
+        }
+        let trace_ms = t0.elapsed().as_secs_f64() * 1000.0;
+
+        // —— STAGE: gather (41-in GPU-native) + fp16 pack into set `set`'s bridge buffer ——
+        let t1 = Instant::now();
+        let v9_gather = self.v9_gather.as_ref().expect("is_v9: v9_gather");
+        let v9_packer = self.v9_packer.as_ref().expect("is_v9: v9_packer");
+        let unet = self.unet.as_ref().expect("is_v9: unet");
+        let history = self.history.as_ref().expect("is_v9: history");
+        let prev_cam = history.prev_cam.unwrap_or(cur_cam);
+        let feature_buf_u32 = unet
+            .feature_buf_u32_set(set)
+            .expect("v9_async: unet built via from_wgpu_queue (bridge present, both sets)");
+        let mut enc = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("v9-async gather + fp16 pack"),
+        });
+        v9_gather.encode(
+            device,
+            queue,
+            &mut enc,
+            accum_ed_buf,
+            aov_buf,
+            feats_buf,
+            &history.prev_out_dl,
+            &history.prev_aov,
+            cur_cam,
+            prev_cam,
+            history.has_prev,
+            history.w,
+            history.h,
+            V7_DEPTH_TOL,
+            V7_NORMAL_THRESH,
+            self.low_w,
+            self.low_h,
+            self.target_w,
+            self.target_h,
+        );
+        let n_in_elems = self.n * unet.config().in_channels;
+        v9_packer.encode(device, &mut enc, feats_buf, feature_buf_u32, n_in_elems);
+        queue.submit(Some(enc.finish()));
+        let _ = device.poll(wgpu::PollType::wait_indefinitely());
+        let gather_ms = t1.elapsed().as_secs_f64() * 1000.0;
+
+        // —— Drain the PREVIOUS call's pending net FIRST (before submitting
+        // THIS call's own net below) — wait + compose + demod + present +
+        // history.swap. ORDERING MATTERS (measured, 2026-07-25): draining
+        // AFTER this call's own submit put the drain's compose/demod GPU
+        // work in direct contention with the JUST-launched fresh net job
+        // (peak GPU demand, ramping up) — measured resolve_ms ballooning
+        // 1.7ms→7.6-8.3ms even though net_wait collapsed to ~0. Draining
+        // BEFORE this call's own submit means the drain's small compute runs
+        // with NO fresh net job competing (the PREVIOUS pending has already
+        // had this call's full trace+gather, ~13-15ms, to finish in the
+        // background — same overlap depth, wait still ~0), and the NEW net's
+        // GPU ramp-up (submitted last, below) competes only with the
+        // CALLER's own present/blit + the NEXT call's trace/gather — which
+        // measured fine (trace showed no material slowdown either order).
+        let mut resolve_ms = 0.0;
+        let mut net_wait_ms = 0.0;
+        if let Some(pending) = self.v9_pending.take() {
+            let p_set = pending.set;
+            let p_cam = pending.cam;
+            let t3 = Instant::now();
+            let (net_gpu_ms, net_out) = unet
+                .wait_gpu_bridged_async(pending.fwd)
+                .expect("v9-async: wait_gpu_bridged_async");
+            net_wait_ms = t3.elapsed().as_secs_f64() * 1000.0;
+            if std::env::var("GAIA_V9_NET_PROBE").as_deref() == Ok("1") && self.frames % 60 == 0 {
+                eprintln!(
+                    "[v9-net-probe-async] wait={:.3} gpu={:.3} encode_commit={:.3} probe_wait={:.3} readout={:.3}",
+                    net_wait_ms, net_gpu_ms, unet.last_encode_commit_ms(), unet.last_wait_ms(), unet.last_readout_ms()
+                );
+            }
+
+            let t4 = Instant::now();
+            let p_aov: &wgpu::Buffer = if p_set == 0 {
+                &self.net_aov[0]
+            } else {
+                self.v9_net_aov_b.as_ref().expect("v9_async: v9_net_aov_b")
+            };
+            let p_accum_ed: &wgpu::Buffer = if p_set == 0 {
+                self.net_accum_ed.as_ref().expect("is_v9: net_accum_ed")
+            } else {
+                self.v9_net_accum_ed_b.as_ref().expect("v9_async: v9_net_accum_ed_b")
+            };
+            let net_out_gated = self.v9_net_out_gated.as_ref().expect("is_v9: v9_net_out_gated");
+            let mut enc = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("v9-async compose + demod + history repack/swap"),
+            });
+            if self.v9_compose_gpu {
+                let net_out_raw = self.v9_net_out_raw.as_ref().expect("is_v9+gpu-compose: v9_net_out_raw");
+                queue.write_buffer(net_out_raw, 0, bytemuck::cast_slice(&net_out));
+                let compose = self.v9_compose.as_ref().expect("is_v9+gpu-compose: v9_compose");
+                compose.encode(
+                    device, queue, &mut enc,
+                    net_out_raw, p_aov, p_accum_ed, net_out_gated,
+                    self.n as u32, self.low_w, self.low_h, self.target_w, self.target_h,
+                    self.v9_hitgate,
+                );
+            } else {
+                let gated = self.v9_hitgate_compose(device, queue, &net_out, p_aov, p_accum_ed);
+                queue.write_buffer(net_out_gated, 0, bytemuck::cast_slice(&gated));
+            }
+            self.demod.encode(
+                device,
+                queue,
+                &mut enc,
+                net_out_gated,
+                p_aov,
+                &self.present_accum[0],
+                self.n as u32,
+                false, // presented (undo albedo demod)
+            );
+            let evidence = self.evidence.as_ref().expect("is_v9: evidence (encode_pack only)");
+            let out_dl_padded = self.out_dl_padded.as_ref().expect("is_v9: out_dl_padded");
+            evidence.encode_pack(queue, device, &mut enc, net_out_gated, out_dl_padded, self.n as u32);
+            let history = self.history.as_mut().expect("is_v9: history");
+            history.swap(&mut enc, out_dl_padded, p_aov, p_cam, self.target_w, self.target_h);
+            queue.submit(Some(enc.finish()));
+            let _ = device.poll(wgpu::PollType::wait_indefinitely());
+            queue.write_buffer(&integrator.uniform_buf, 0, bytemuck::bytes_of(blit_uniform));
+            resolve_ms = t4.elapsed().as_secs_f64() * 1000.0;
+            self.last_set = 0;
+            self.s_net_gpu.push(net_gpu_ms);
+            self.s_net_commit.push(unet.last_encode_commit_ms());
+            self.s_net_wait.push(unet.last_wait_ms());
+        } else {
+            self.s_net_gpu.push(0.0);
+            self.s_net_commit.push(0.0);
+            self.s_net_wait.push(0.0);
+        }
+
+        // —— STAGE: net SUBMIT (async, no wait) on set `set` — LAST, so its
+        // GPU ramp-up competes only with the caller's own present/blit + the
+        // NEXT call's trace/gather (see the ordering doc above), not with
+        // the drain's own compose/demod work above. ——
+        let t2 = Instant::now();
+        let fwd = unet
+            .submit_gpu_bridged_async(set)
+            .expect("v9-async: submit_gpu_bridged_async");
+        let submit_ms = t2.elapsed().as_secs_f64() * 1000.0;
+        let net_ms = submit_ms + net_wait_ms;
+
+        self.v9_pending = Some(V9Pending { fwd, set, cam: cur_cam });
+
+        (trace_ms, gather_ms, net_ms, resolve_ms)
+    }
+
+    /// V9 EYE-TEST WINDOW BUILD: the CPU hit-gate substitution — reads back
+    /// `net_aov[0]` (albedo/depth) and `net_accum_ed` (low-res split E/D) to
+    /// the CPU, and for every no-hit px (depth<=0, only when `v9_hitgate`)
+    /// replaces `net_out[px]` with the evidence composite's own demod-log
+    /// value (`target_demod_log(bilinear(E+D), albedo)` — bit-for-bit the
+    /// same construction `rdirect::evidence_composite_frame` +
+    /// `target_demod_log` build, and the same taps/weights `gather_v9`'s own
+    /// bilinear read uses — `rdirect_gather_split.wgsl::low_coord`). Every hit
+    /// px passes `net_out` through unchanged (v9t's dark-hit deltas are 0).
+    fn v9_hitgate_compose(
+        &self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        net_out: &[f32],
+        aov_buf: &wgpu::Buffer,
+        accum_ed_buf: &wgpu::Buffer,
+    ) -> Vec<f32> {
+        let n = self.n;
+        if !self.v9_hitgate {
+            return net_out.to_vec();
+        }
+        let aov = read_buffer_f32(device, queue, aov_buf, (n as u64) * 32);
+        let low_n = (self.low_w as usize) * (self.low_h as usize);
+        let ed = read_buffer_f32(device, queue, accum_ed_buf, (low_n as u64) * 32);
+        // V9-WIRE GPU FUSE (task mandate, 2026-07-25): the actual compose math
+        // moved to `rdirect_v9_compose::compose_cpu_reference` — shared,
+        // bit-for-bit, with the GPU fused pass's own parity oracle (see that
+        // module's doc). This wrapper is now just the CPU readback shell.
+        compose_cpu_reference(net_out, &aov, &ed, self.low_w, self.low_h, self.target_w, self.target_h, self.v9_hitgate)
+    }
+
+    /// Record one frame's stage budget and print a rolling median/p95 summary
+    /// every 60 frames (the N0.d budget table's live source).
+    fn record(&mut self, t: NetTimings) {
+        self.s_trace.push(t.trace);
+        self.s_gather.push(t.gather);
+        self.s_net.push(t.net);
+        // s_net_gpu is pushed inside resolve_frame (GPU timestamps live there).
+        self.s_demod.push(t.demod);
+        self.s_present.push(t.present);
+        self.s_total.push(t.total);
+        if self.wall_start.is_none() {
+            self.wall_start = Some(Instant::now());
+        }
+        self.frames += 1;
+        // V7-LIVE LANE PERF ROOM 7: RAM-only per-frame row, gated by
+        // `frame_csv_path` — zero-cost (one branch) when the env var is unset.
+        // `s_net_gpu`/`s_net_commit`/`s_net_wait` already carry this frame's
+        // entry (pushed inside `resolve_frame`, before `record` is called).
+        if self.frame_csv_path.is_some() {
+            self.frame_csv_rows.push((
+                self.frames,
+                t.trace,
+                t.gather,
+                t.net,
+                *self.s_net_gpu.last().unwrap_or(&0.0),
+                *self.s_net_commit.last().unwrap_or(&0.0),
+                *self.s_net_wait.last().unwrap_or(&0.0),
+                t.demod,
+                t.present,
+                t.total,
+            ));
+        }
+        if self.frames % 60 == 0 {
+            // N0.i S13 throughput truth: frames / wall seconds over the run.
+            let wall_fps = self
+                .wall_start
+                .map(|s| self.frames as f64 / s.elapsed().as_secs_f64().max(1e-9))
+                .unwrap_or(0.0);
+            eprintln!(
+                "[n0i] frames={} {}x{}→{}x{} (ms median/p95 vs 16.67): \
+                 trace {:.2}/{:.2} gather {:.2}/{:.2} \
+                 net[wall {:.2}/{:.2} gpu {:.2}/{:.2} commit {:.2}/{:.2} wait {:.2}/{:.2}] \
+                 demod {:.2}/{:.2} present {:.2}/{:.2} TOTAL {:.2}/{:.2} | WALL-FPS {:.1}",
+                self.frames,
+                self.low_w,
+                self.low_h,
+                self.target_w,
+                self.target_h,
+                pct(&self.s_trace, 0.5),
+                pct(&self.s_trace, 0.95),
+                pct(&self.s_gather, 0.5),
+                pct(&self.s_gather, 0.95),
+                pct(&self.s_net, 0.5),
+                pct(&self.s_net, 0.95),
+                pct(&self.s_net_gpu, 0.5),
+                pct(&self.s_net_gpu, 0.95),
+                pct(&self.s_net_commit, 0.5),
+                pct(&self.s_net_commit, 0.95),
+                pct(&self.s_net_wait, 0.5),
+                pct(&self.s_net_wait, 0.95),
+                pct(&self.s_demod, 0.5),
+                pct(&self.s_demod, 0.95),
+                pct(&self.s_present, 0.5),
+                pct(&self.s_present, 0.95),
+                pct(&self.s_total, 0.5),
+                pct(&self.s_total, 0.95),
+                wall_fps,
+            );
+        }
+    }
+
+    /// V7-LIVE LANE PERF ROOM 7: write the buffered per-frame series to
+    /// `frame_csv_path` (one `std::fs::write`, called once from the shutdown
+    /// flush hook — no per-frame I/O). No-op if the env gate is off or no
+    /// frames were recorded yet. Idempotent (safe to call more than once;
+    /// re-writes the file with whatever has accumulated so far).
+    fn write_frame_csv(&self) {
+        let Some(path) = &self.frame_csv_path else { return };
+        if self.frame_csv_rows.is_empty() {
+            return;
+        }
+        let mut out = String::with_capacity(self.frame_csv_rows.len() * 72 + 96);
+        out.push_str(
+            "frame,trace_ms,gather_ms,net_wall_ms,net_gpu_ms,net_commit_ms,net_wait_ms,demod_ms,present_ms,total_ms\n",
+        );
+        for r in &self.frame_csv_rows {
+            out.push_str(&format!(
+                "{},{:.4},{:.4},{:.4},{:.4},{:.4},{:.4},{:.4},{:.4},{:.4}\n",
+                r.0, r.1, r.2, r.3, r.4, r.5, r.6, r.7, r.8, r.9
+            ));
+        }
+        match std::fs::write(path, out) {
+            Ok(()) => eprintln!(
+                "[frame_csv] wrote {} rows to {path}",
+                self.frame_csv_rows.len()
+            ),
+            Err(e) => eprintln!("[frame_csv] write failed ({path}): {e}"),
+        }
+    }
+
+    /// S12.5 AI DEBUG DOOR — `/budget` JSON: the latest rolling per-stage
+    /// median/p95 (ms) plus the frame count and the 16.67 ms wall.
+    fn budget_json(&self) -> String {
+        let path = if self.is_v9 {
+            "v9-unet-bridged"
+        } else if self.live.as_ref().expect("non-v9 path: live is Some").use_mpsgraph_now() {
+            "mpsgraph"
+        } else {
+            "chain"
+        };
+        let wall_fps = self
+            .wall_start
+            .map(|s| self.frames as f64 / s.elapsed().as_secs_f64().max(1e-9))
+            .unwrap_or(0.0);
+        format!(
+            "{{\"frames\":{},\"wall_ms\":16.67,\"wall_fps\":{:.2},\"path\":\"{path}\",\
+             \"canvas\":[{},{}],\"stages\":{{\
+             \"trace\":[{:.3},{:.3}],\"gather\":[{:.3},{:.3}],\
+             \"net_wall\":[{:.3},{:.3}],\"net_gpu\":[{:.3},{:.3}],\
+             \"net_commit\":[{:.3},{:.3}],\"net_wait\":[{:.3},{:.3}],\
+             \"demod\":[{:.3},{:.3}],\"present\":[{:.3},{:.3}],\
+             \"total\":[{:.3},{:.3}]}}}}",
+            self.frames,
+            wall_fps,
+            self.target_w,
+            self.target_h,
+            pct(&self.s_trace, 0.5), pct(&self.s_trace, 0.95),
+            pct(&self.s_gather, 0.5), pct(&self.s_gather, 0.95),
+            pct(&self.s_net, 0.5), pct(&self.s_net, 0.95),
+            pct(&self.s_net_gpu, 0.5), pct(&self.s_net_gpu, 0.95),
+            pct(&self.s_net_commit, 0.5), pct(&self.s_net_commit, 0.95),
+            pct(&self.s_net_wait, 0.5), pct(&self.s_net_wait, 0.95),
+            pct(&self.s_demod, 0.5), pct(&self.s_demod, 0.95),
+            pct(&self.s_present, 0.5), pct(&self.s_present, 0.95),
+            pct(&self.s_total, 0.5), pct(&self.s_total, 0.95),
+        )
+    }
+
+    /// S12.5 `/state` JSON: forward path, canvas res, frame count, weights id.
+    fn state_json(&self) -> String {
+        // STAGE B: report the selected weights (default v2).
+        let weights = std::env::var("GAIA_NATIVE_WEIGHTS").unwrap_or_else(|_| "v2".to_string());
+        if self.is_v9 {
+            let unet = self.unet.as_ref().expect("is_v9: unet is Some");
+            return format!(
+                "{{\"path\":\"v9-unet-bridged\",\"canvas\":[{},{}],\"pixels\":{},\
+                 \"frames\":{},\"weights\":\"{weights}\",\
+                 \"in_channels\":{},\"out_channels\":{},\"hitgate\":{},\
+                 \"compose\":\"{}\"}}",
+                self.target_w, self.target_h, self.n, self.frames,
+                unet.config().in_channels, unet.config().out_channels, self.v9_hitgate,
+                if self.v9_compose_gpu { "gpu" } else { "cpu" },
+            );
+        }
+        let live = self.live.as_ref().expect("non-v9 path: live is Some");
+        let path = if live.use_mpsgraph_now() { "mpsgraph" } else { "chain" };
+        format!(
+            "{{\"path\":\"{path}\",\"canvas\":[{},{}],\"pixels\":{},\
+             \"frames\":{},\"weights\":\"rdirect-weights-{weights}\",\
+             \"in_features\":{},\"out_channels\":{},\"max_pixels\":{}}}",
+            self.target_w, self.target_h, self.n, self.frames,
+            live.in_features(), live.out_channels(), live.max_pixels(),
+        )
+    }
+}
+
+/// undo the net's log-demod residual by the native albedo (bit-identical to
+/// `examples/rdirect_live_frame.rs` / VIII-1's `undo_log_demod`). CPU parity
+/// reference; the live present path does this on the GPU (`rdirect_demod.wgsl`,
+/// same math), so this stays only as the correctness anchor.
+#[cfg(target_os = "macos")]
+#[allow(dead_code)]
+fn undo_log_demod_px(dl: Vec3, albedo: Vec3) -> Vec3 {
+    let divisor = if albedo.length_squared() > 1e-8 {
+        albedo + Vec3::splat(ALBEDO_DEMOD_EPS)
+    } else {
+        Vec3::ONE
+    };
+    let e = Vec3::new(dl.x.exp() - 1.0, dl.y.exp() - 1.0, dl.z.exp() - 1.0);
+    Vec3::new(e.x.max(0.0), e.y.max(0.0), e.z.max(0.0)) * divisor
+}
+
+/// The `q` quantile (0..=1) of `samples` by the nearest-rank method (budget
+/// table helper). Returns 0.0 for an empty slice.
+fn pct(samples: &[f64], q: f64) -> f64 {
+    if samples.is_empty() {
+        return 0.0;
+    }
+    let mut s: Vec<f64> = samples.to_vec();
+    s.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    let rank = ((q * (s.len() as f64 - 1.0)).round() as usize).min(s.len() - 1);
+    s[rank]
+}
+
+/// V9 EYE-TEST WINDOW BUILD (2026-07-24): blocking whole-buffer f32 readback
+/// — house pattern (`integrator.rs`'s own headless-trace readbacks), copied
+/// here since this crate's `main.rs` binary doesn't share code with
+/// `integrator.rs`'s private helpers. `byte_len` must be `<= src`'s own size.
+#[cfg(target_os = "macos")]
+fn read_buffer_f32(device: &wgpu::Device, queue: &wgpu::Queue, src: &wgpu::Buffer, byte_len: u64) -> Vec<f32> {
+    if byte_len == 0 {
+        return Vec::new();
+    }
+    let readback = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("v9 eye-test CPU readback"),
+        size: byte_len,
+        usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+        mapped_at_creation: false,
+    });
+    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+        label: Some("v9 eye-test readback copy"),
+    });
+    encoder.copy_buffer_to_buffer(src, 0, &readback, 0, byte_len);
+    let (tx, rx) = std::sync::mpsc::channel();
+    encoder.map_buffer_on_submit(&readback, wgpu::MapMode::Read, .., move |r| {
+        let _ = tx.send(r.map(|_| ()));
+    });
+    queue.submit(Some(encoder.finish()));
+    let _ = device.poll(wgpu::PollType::wait_indefinitely());
+    rx.recv().expect("v9 readback channel").expect("v9 map readback");
+    let mapped = readback.get_mapped_range(..).expect("v9 mapped readback");
+    let out: Vec<f32> = bytemuck::cast_slice(&mapped).to_vec();
+    drop(mapped);
+    readback.unmap();
+    out
+}
+
+struct Renderer {
+    // Safety: created from the native Tauri Window's raw handles; the app owns that Window
+    // until shutdown, and the render worker stops before process exit.
+    // `None` in GAIA_NATIVE_OFFSCREEN mode — no NSWindow, no surface; the render
+    // loop draws only to `offscreen` and `/scry` serves that.
+    surface: Option<wgpu::Surface<'static>>,
+    device: wgpu::Device,
+    queue: wgpu::Queue,
+    config: wgpu::SurfaceConfiguration,
+    /// The ONE traced integrator (Rite IV) — replaces the deleted raster path.
+    integrator: Integrator,
+    /// The realm's render scene, kept so the render loop can tick the world clock
+    /// and re-splice the living layer each frame (Rite IV dynamics).
+    scene: RenderScene,
+    /// The STATIC BVH — built once over the non-behavior leaf triangles and
+    /// cached; only the dynamic partition changes per tick, spliced onto this.
+    static_bvh: Bvh,
+    /// The dynamic-partition SAH params (`.dynamic()` derives the splice's own
+    /// `BvhParams`) — kept so `capture_pose` can build a one-off foreign-eye
+    /// splice (OWN-EYE CULL) without disturbing the persistent `splice`/`static_bvh`.
+    bvh_params: BvhParams,
+    /// Refit tuning for the same one-off foreign-eye splice.
+    refit_params: RefitParams,
+    /// OWN-EYE CULL override (`GAIA_NATIVE_DRAW_OWN_BODY`, default off) — see
+    /// `ScryingGlassConfig::draw_own_body`.
+    draw_own_body: bool,
+    /// The persistent two-level splice (LEVER 1): refits the dynamic partition
+    /// per tick when the set is unchanged, rebuilds only on set change / bound
+    /// degradation. Its `merged` tree is what gets uploaded.
+    splice: DynamicSplice,
+    /// `/retina` CPU trees + source IDs; cache invalidates with scene geometry.
+    retina_cache: RetinaGeometryCache,
+    retina_epoch: u64,
+    /// The dynamic model transforms uploaded last frame; when they change the
+    /// BVH is re-spliced and accumulation resets (the honest 2spp-live tradeoff).
+    last_models: Vec<[f32; 16]>,
+    /// Current window camera (the moving eye follows the embodied body).
+    camera: Camera,
+    sun: SunLight,
+    sky_top: [f32; 4],
+    sky_horizon: [f32; 4],
+    int_params: IntegratorParams,
+    /// Accumulation frames a /scry moving-eye capture integrates.
+    capture_frames: u32,
+    /// God's fixed render canvas. Trace, accumulation, temporal buffers, and
+    /// offscreen present remain this size across every window resize.
+    canvas_width: u32,
+    canvas_height: u32,
+    /// Persistent accumulation at God's fixed canvas resolution.
+    surface_accum: wgpu::Buffer,
+    surface_compute_bg: wgpu::BindGroup,
+    surface_blit_bg: wgpu::BindGroup,
+    samples_before: u32,
+    /// LIGHT-NOT-DOTS live temporal accumulation state (see `render`).
+    temporal_enabled: bool,
+    temporal_params: TemporalParams,
+    /// Ping-pong PACKED frame buffers (radiance + primary gbuffer, 2 cells/px)
+    /// and history (rgb + accumulated frame count). Parity flips each frame.
+    /// Owned here to keep the GPU buffers alive for the lifetime of `t_bind`.
+    #[allow(dead_code)]
+    t_packed: [wgpu::Buffer; 2],
+    #[allow(dead_code)]
+    t_hist: [wgpu::Buffer; 2],
+    t_bind: [wgpu::BindGroup; 2],
+    /// Frame parity for the ping-pong and the previous-frame camera uniform
+    /// (None until the first temporal frame has run / after an invalidation).
+    t_parity: usize,
+    t_prev: Option<IntegratorUniform>,
+    /// Eye pose the current fixed-canvas accumulation belongs to.
+    last_view: Option<([f32; 3], f32, f32)>,
+    offscreen: OffscreenTarget,
+    pixel_order: PixelOrder,
+    capture_sender: mpsc::Sender<CaptureReady>,
+    /// N0.j S13: does the live present path do the offscreen readback EVERY
+    /// frame (the old measurement tax, kept as an A/B via
+    /// `GAIA_NATIVE_PERFRAME_READBACK=1`) or ON-DEMAND when `/scry` actually
+    /// asks (the S13 default)? On-demand serves the current offscreen texture
+    /// via `capture_presented`, so the render loop never pays the copy.
+    perframe_readback: bool,
+    /// N0.j S13: the last frame's per-frame-readback ms (0 in on-demand mode),
+    /// set by `net_present_frame`, read by the loop's `outside` accounting.
+    last_readback_ms: f64,
+    /// N0.j S13 THE OUTSIDE-9ms HUNT: the non-net frame-loop budget.
+    outside: OutsideBudget,
+    /// S14: the last frame's `advance_world` sub-stage breakdown (skin/gather/
+    /// splice/upload), filled by `advance_world`, drained by the loop into
+    /// `outside.record_world`.
+    last_world_stages: WorldStages,
+    /// DAS BLUTBÄNDIGEN — B0 data door state. `None` when the master switch is
+    /// off; `Some` carries the world/scene params + last-good snapshot the live
+    /// scene/shader bends re-materialize and journal against.
+    bloodbend: Option<Bloodbend>,
+    /// NEURAL-LIVE N0.c: master switch for the net-present scaffold (config).
+    net_present_enabled: bool,
+    /// NEURAL-LIVE N0.c: the pooled net-present rig, built lazily on the first
+    /// frame once the boot surface size is known (`None` until then / when the
+    /// flag is off). macOS-only.
+    #[cfg(target_os = "macos")]
+    net_present: Option<NetPresent>,
+}
+
+impl Renderer {
+    /// `window` is `Some` for the normal on-screen surface path and `None` in
+    /// GAIA_NATIVE_OFFSCREEN mode (no NSWindow, no wgpu surface). `fallback_dims`
+    /// sizes the offscreen present/capture surface when `window` is `None`.
+    #[allow(clippy::too_many_arguments)]
+    fn new(
+        window: Option<&tauri::Window>,
+        fallback_dims: (u32, u32),
+        capture_sender: mpsc::Sender<CaptureReady>,
+        scene: RenderScene,
+        int_params: IntegratorParams,
+        bvh_params: &BvhParams,
+        refit_params: RefitParams,
+        capture_frames: u32,
+        draw_own_body: bool,
+        temporal_enabled: bool,
+        temporal_params: TemporalParams,
+        canvas_width: u32,
+        canvas_height: u32,
+        net_present_enabled: bool,
+    ) -> Result<Self, String> {
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+        // Build the surface (windowed) or none (offscreen); pick the adapter
+        // compatible with whichever we have.
+        let surface = match window {
+            Some(window) => {
+                let target = unsafe {
+                    wgpu::SurfaceTargetUnsafe::from_display_and_window(window, window)
+                        .map_err(|error| format!("raw-window-handle target: {error}"))?
+                };
+                let surface = unsafe {
+                    instance
+                        .create_surface_unsafe(target)
+                        .map_err(|error| format!("wgpu surface: {error}"))?
+                };
+                Some(surface)
+            }
+            None => None,
+        };
+        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+            power_preference: wgpu::PowerPreference::HighPerformance,
+            compatible_surface: surface.as_ref(),
+            force_fallback_adapter: false,
+            ..Default::default()
+        }))
+        .map_err(|error| format!("wgpu adapter: {error}"))?;
+        let (device, queue) =
+            pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
+                .map_err(|error| format!("wgpu device: {error}"))?;
+        // Size + format: from the surface when windowed; from `fallback_dims`
+        // with a fixed BGRA8-sRGB (M1's native surface format) when offscreen,
+        // so the captured PNGs match the on-screen path byte-for-byte.
+        let (size, format, pixel_order, alpha_mode) = match (&surface, window) {
+            (Some(surface), Some(window)) => {
+                let size = window.inner_size().map_err(|error| error.to_string())?;
+                let capabilities = surface.get_capabilities(&adapter);
+                let format = [
+                    wgpu::TextureFormat::Bgra8UnormSrgb,
+                    wgpu::TextureFormat::Rgba8UnormSrgb,
+                    wgpu::TextureFormat::Bgra8Unorm,
+                    wgpu::TextureFormat::Rgba8Unorm,
+                ]
+                .into_iter()
+                .find(|candidate| capabilities.formats.contains(candidate))
+                .ok_or_else(|| {
+                    "surface has no 8-bit RGBA/BGRA format for framebuffer capture".to_string()
+                })?;
+                let pixel_order = match format {
+                    wgpu::TextureFormat::Bgra8Unorm | wgpu::TextureFormat::Bgra8UnormSrgb => {
+                        PixelOrder::Bgra
+                    }
+                    _ => PixelOrder::Rgba,
+                };
+                (size, format, pixel_order, capabilities.alpha_modes[0])
+            }
+            _ => {
+                let (w, h) = fallback_dims;
+                (
+                    PhysicalSize { width: w.max(1), height: h.max(1) },
+                    wgpu::TextureFormat::Bgra8UnormSrgb,
+                    PixelOrder::Bgra,
+                    wgpu::CompositeAlphaMode::Auto,
+                )
+            }
+        };
+        let config = wgpu::SurfaceConfiguration {
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            format,
+            width: size.width.max(1),
+            height: size.height.max(1),
+            present_mode: wgpu::PresentMode::Fifo,
+            alpha_mode,
+            view_formats: vec![],
+            color_space: wgpu::SurfaceColorSpace::Auto,
+            desired_maximum_frame_latency: 2,
+        };
+        if let Some(surface) = &surface {
+            surface.configure(&device, &config);
+        }
+
+        // The acceleration: a STATIC BVH over the Great Chain's EXACT non-behavior
+        // leaf triangles (built once, cached), with the living layer's dynamic
+        // partition spliced on top. Load budget printed, never gated (RENDER:
+        // cost ∝ pixels, not FLOPs).
+        let build_start = Instant::now();
+        let static_bvh = Bvh::build(&scene.leaf_triangles(), bvh_params);
+        // OWN-EYE CULL doesn't apply yet at construction — no walker pose has
+        // fed `command_bodies_walked` (`scene.last_walker_eye` is `None`), so
+        // this is identical to `dynamic_leaf_triangles_for_eye` here; the first
+        // frame loop's `advance_world` re-splices with the real walker eye.
+        let dynamic_tris = scene.dynamic_leaf_triangles();
+        let splice = DynamicSplice::build(
+            &static_bvh,
+            &dynamic_tris,
+            &bvh_params.dynamic(),
+            refit_params,
+        );
+        let build_millis = build_start.elapsed().as_secs_f64() * 1e3;
+        let integrator = Integrator::new(&device, format, &splice.merged, None);
+        let last_models = scene.dynamics.model_matrices();
+        eprintln!(
+            "[pleroma] BVH nodes={} triangles={} (static {} + dynamic {}) build={build_millis:.1}ms; {} dynamic entit(ies) — living layer",
+            integrator.node_count,
+            integrator.tri_count,
+            static_bvh.tris.len(),
+            dynamic_tris.len(),
+            scene.dynamics.entities().len(),
+        );
+        eprintln!(
+            "[pleroma] traced integrator spp={} bounces={} rr_start={} — first_light is dead",
+            int_params.spp, int_params.max_bounces, int_params.rr_start,
+        );
+
+        let camera = scene.camera;
+        let sun = scene.sun;
+        let sky_top = scene.sky_top;
+        let sky_horizon = scene.sky_horizon;
+
+        // ★ THE RESOLUTION IS 640×480: all rendering resources live at the
+        // fixed IRON canvas. The window surface is display-only.
+        let surface_accum = integrator.make_accum(&device, canvas_width, canvas_height);
+        let surface_compute_bg = integrator.compute_bind_group(&device, &surface_accum);
+        let surface_blit_bg = integrator.blit_bind_group(&device, &surface_accum);
+        let t_packed = [
+            integrator.make_temporal_packed(&device, canvas_width, canvas_height),
+            integrator.make_temporal_packed(&device, canvas_width, canvas_height),
+        ];
+        let t_hist = [
+            integrator.make_temporal_buffer(&device, canvas_width, canvas_height),
+            integrator.make_temporal_buffer(&device, canvas_width, canvas_height),
+        ];
+        let t_bind = [
+            integrator.temporal_bind_group(
+                &device,
+                &t_packed[0],
+                &t_packed[1],
+                &t_hist[0],
+                &t_hist[1],
+            ),
+            integrator.temporal_bind_group(
+                &device,
+                &t_packed[1],
+                &t_packed[0],
+                &t_hist[1],
+                &t_hist[0],
+            ),
+        ];
+        let offscreen = OffscreenTarget::new(&device, format, canvas_width, canvas_height);
+        eprintln!(
+            "[wgpu] traced God's canvas {canvas_width}x{canvas_height}; surface {}x{} = nearest integer display scale ({format:?})",
+            config.width, config.height,
+        );
+        Ok(Self {
+            surface,
+            device,
+            queue,
+            config,
+            integrator,
+            scene,
+            static_bvh,
+            bvh_params: *bvh_params,
+            refit_params,
+            draw_own_body,
+            splice,
+            retina_cache: RetinaGeometryCache::default(),
+            retina_epoch: 0,
+            last_models,
+            camera,
+            sun,
+            sky_top,
+            sky_horizon,
+            int_params,
+            capture_frames,
+            canvas_width,
+            canvas_height,
+            surface_accum,
+            surface_compute_bg,
+            surface_blit_bg,
+            samples_before: 0,
+            temporal_enabled,
+            temporal_params,
+            t_packed,
+            t_hist,
+            t_bind,
+            t_parity: 0,
+            t_prev: None,
+            last_view: None,
+            offscreen,
+            pixel_order,
+            capture_sender,
+            perframe_readback: matches!(
+                std::env::var("GAIA_NATIVE_PERFRAME_READBACK").as_deref(),
+                Ok("1" | "true")
+            ),
+            last_readback_ms: 0.0,
+            outside: OutsideBudget::default(),
+            last_world_stages: WorldStages::default(),
+            bloodbend: None,
+            net_present_enabled,
+            #[cfg(target_os = "macos")]
+            net_present: None,
+        })
+    }
+
+    /// DAS BLUTBÄNDIGEN — SCENE BEND. A watched scene JSON file changed: run the
+    /// full Zauberpolizei inspection (loader + render-scene materialization into
+    /// a THROWAWAY world) BEFORE touching living tissue. On rejection the world
+    /// stays byte-identical and a police report is logged. On success the
+    /// PREVIOUS good bytes are journaled (Traumdeuter-Vorritt), the entity diff
+    /// is reported (law 4 blast radius), and the scene tier rebuilds live —
+    /// window/device/surface/pipelines all persist.
+    fn bend_scene(&mut self) {
+        let Some(bb) = self.bloodbend.as_ref() else {
+            return;
+        };
+        let world_path = bb.world_path.clone();
+        let scene_params = bb.scene_params.clone();
+        let journal_dir = bb.params.journal_dir.clone();
+        let scene_paths = bb.params.scene_paths.clone();
+        let previous = bb.last_good.clone();
+        let next = bloodbend::read_scene_bytes(&scene_paths);
+
+        // ADVISORY 3 — no-op bend: the watcher can fire on a touch with no
+        // entity-level change (save-without-edit, whitespace-only diff, a
+        // broken-JSON write that briefly round-trips back to the same text).
+        // Skip journal + rebuild + accumulation-reset entirely.
+        //
+        // RE-PASS ADVISORY (corner a): do NOT advance `last_good` to `next`
+        // here. A duplicate-id write can be value-identical at the entity
+        // level (diff empty) while its raw bytes are still loader-rejectable
+        // (e.g. a repeated key the loader itself would refuse) — those bytes
+        // never passed INSPECTION 1+2 below. Leaving `last_good` pointed at
+        // the last VALIDATED bytes keeps the invariant "last_good always
+        // loads" true across a no-op; the next real (non-empty) diff still
+        // computes correctly against those same last-validated bytes.
+        let diff = bloodbend::diff_scenes(&previous, &next);
+        if diff.is_empty() {
+            eprintln!("[bloodbend] no-op bend ignored · scene · entity diff empty");
+            return;
+        }
+
+        // INSPECTION 1+2 — TOCTOU-SAFE (bloodbend-b0 fix pass, adversary
+        // MUST-FIX 2): validate the EXACT bytes just captured in `next` by
+        // materializing them into a private validation dir and loading FROM
+        // THAT — never re-reading the live world dir a second time. `last_good`
+        // is set to this SAME `next` below, so validated bytes == stored
+        // last_good bytes BY CONSTRUCTION; no window remains for a concurrent
+        // write to slip unvalidated bytes into `last_good` (ordeal f).
+        let validate_dir = match bloodbend::write_validation_dir(&journal_dir, &world_path, &next)
+        {
+            Ok(dir) => dir,
+            Err(error) => {
+                bloodbend::police_report("scene", &format!("validation snapshot: {error}"));
+                return;
+            }
+        };
+        // Parse + deserialize through the sigil structs. NOTE: the loader's
+        // `deny_unknown_fields` is loud on a component's OWN fields (e.g.
+        // physics::RigidBody), but the data-driven component model tolerates
+        // an unrecognized COMPONENT KEY on an entity by design — that is a
+        // flagged design question, not a loader bug; do not read this comment
+        // as "any unknown key is rejected".
+        let mut core = Core::default();
+        ScryingGlassPackage.register(&mut core);
+        if let Err(error) = load_world_dir(&validate_dir, &mut core.world) {
+            let _ = std::fs::remove_dir_all(&validate_dir);
+            bloodbend::police_report("scene", &error);
+            return;
+        }
+        // INSPECTION 2 — materialize the render scene (geometry/material laws).
+        let new_scene = match RenderScene::from_ecs(core.world, &scene_params) {
+            Ok(scene) => scene,
+            Err(error) => {
+                let _ = std::fs::remove_dir_all(&validate_dir);
+                bloodbend::police_report("scene", &format!("materialize: {error}"));
+                return;
+            }
+        };
+        let _ = std::fs::remove_dir_all(&validate_dir);
+
+        // TRAUMDEUTER-VORRITT — snapshot the previous good bytes BEFORE apply.
+        match bloodbend::journal_previous(&journal_dir, &previous) {
+            Ok(dir) => eprintln!("[bloodbend] 📜 journaled previous scene → {}", dir.display()),
+            Err(error) => {
+                bloodbend::police_report(
+                    "scene",
+                    &format!("journal failed, refusing to apply (undo would be lost): {error}"),
+                );
+                return;
+            }
+        }
+
+        self.rebuild_scene(new_scene);
+        if let Some(bb) = self.bloodbend.as_mut() {
+            bb.last_good = next;
+        }
+        bloodbend::bend_applied("scene", &diff.summary());
+    }
+
+    /// Re-project authoritative crystal state through the one render scene path.
+    fn rebuild_world_core(
+        &mut self,
+        world_core: &WorldCore,
+        scene_params: &SceneParameters,
+    ) -> Result<(), String> {
+        let mut core = Core::default();
+        ScryingGlassPackage.register(&mut core);
+        world_core.materialize_into(&mut core.world)?;
+        let scene = RenderScene::from_ecs(core.world, scene_params)
+            .map_err(|error| format!("materialize authority state: {error}"))?;
+        self.rebuild_scene(scene);
+        Ok(())
+    }
+
+    /// The scene tier of the blast-radius ladder (law 4): swap the render scene,
+    /// rebuild the static BVH + dynamic splice over the new leaf triangles, re-
+    /// upload the acceleration structure, refresh sun/sky, and reset the window
+    /// accumulation. The device, surface, integrator pipelines and uniform
+    /// buffer all persist (law 1 — stable substrate outlives the swapped unit).
+    fn rebuild_scene(&mut self, new_scene: RenderScene) {
+        self.scene = new_scene;
+        let tris = self.scene.leaf_triangles();
+        self.static_bvh = Bvh::build(&tris, &self.bvh_params);
+        let dynamic_tris = self.scene.dynamic_leaf_triangles();
+        self.splice = DynamicSplice::build(
+            &self.static_bvh,
+            &dynamic_tris,
+            &self.bvh_params.dynamic(),
+            self.refit_params,
+        );
+        self.integrator.update_bvh(&self.device, &self.splice.merged);
+        self.retina_epoch = self.retina_epoch.wrapping_add(1);
+        self.retina_cache.clear();
+        self.last_models = self.scene.dynamics.model_matrices();
+        self.sun = self.scene.sun;
+        self.sky_top = self.scene.sky_top;
+        self.sky_horizon = self.scene.sky_horizon;
+        self.camera.fov_y_radians = self.scene.camera.fov_y_radians;
+        self.reset_surface_accum();
+    }
+
+    /// DAS BLUTBÄNDIGEN — SHADER BEND. The watched WGSL source changed: read it
+    /// and hand it to `Integrator::reload_shader`, which recompiles + rebuilds
+    /// the pipelines under a wgpu Validation error scope. A bad shader keeps the
+    /// OLD pipeline rendering and yields a police report; a clean one swaps the
+    /// pipelines and resets accumulation. Buffers/layouts/bind groups persist.
+    fn bend_shader(&mut self) {
+        let Some(bb) = self.bloodbend.as_ref() else {
+            return;
+        };
+        let path = bb.params.shader_path.clone();
+        let journal_dir = bb.params.journal_dir.clone();
+        let previous_shader = bb.last_good_shader.clone();
+        let source = match std::fs::read_to_string(&path) {
+            Ok(source) => source,
+            Err(error) => {
+                bloodbend::police_report("shader", &format!("read {}: {error}", path.display()));
+                return;
+            }
+        };
+
+        // ADVISORY 3 — no-op bend: identical source (a touch with no edit).
+        if source == previous_shader {
+            eprintln!(
+                "[bloodbend] no-op bend ignored · shader · {} unchanged",
+                path.display()
+            );
+            return;
+        }
+
+        // TRAUMDEUTER-VORRITT — SHADER JOURNAL (bloodbend-b0 fix pass,
+        // adversary MUST-FIX 1): snapshot the previous good WGSL source BEFORE
+        // the swap is attempted, mirroring the scene tier. A journal-write
+        // failure REFUSES the bend — undo lost = no bend.
+        match bloodbend::journal_previous_shader(&journal_dir, &previous_shader) {
+            Ok(dir) => eprintln!("[bloodbend] 📜 journaled previous shader → {}", dir.display()),
+            Err(error) => {
+                bloodbend::police_report(
+                    "shader",
+                    &format!("journal failed, refusing to apply (undo would be lost): {error}"),
+                );
+                return;
+            }
+        }
+
+        let format = self.config.format;
+        match self.integrator.reload_shader(&self.device, &source, format) {
+            Ok(()) => {
+                self.reset_surface_accum();
+                if let Some(bb) = self.bloodbend.as_mut() {
+                    bb.last_good_shader = source;
+                }
+                bloodbend::bend_applied("shader", &format!("{} recompiled", path.display()));
+            }
+            Err(error) => bloodbend::police_report("shader", &error),
+        }
+    }
+
+    /// Rebuild the fixed-canvas accumulation buffer and drop its samples.
+    fn reset_surface_accum(&mut self) {
+        let accum = self
+            .integrator
+            .make_accum(&self.device, self.canvas_width, self.canvas_height);
+        self.surface_compute_bg = self.integrator.compute_bind_group(&self.device, &accum);
+        self.surface_blit_bg = self.integrator.blit_bind_group(&self.device, &accum);
+        self.surface_accum = accum;
+        self.samples_before = 0;
+    }
+
+    /// MEASURE: honest per-frame GPU cost at God's fixed render canvas.
+    /// Dispatches `frames` accumulation passes into a throwaway
+    /// accum from the live spawn camera, force-flushing the GPU
+    /// (`poll(wait)`) after each so the timing is real GPU work, not an
+    /// async submit. Returns (median_ms, mean_ms). Runs once at startup off
+    /// the frame loop, so it never perturbs live frames.
+    fn measure_trace_ms(&mut self, frames: u32) -> (f64, f64) {
+        let (width, height) = (self.canvas_width, self.canvas_height);
+        let accum = self.integrator.make_accum(&self.device, width, height);
+        let compute_bg = self.integrator.compute_bind_group(&self.device, &accum);
+        let mut samples_before = 0u32;
+        let mut times = Vec::with_capacity(frames as usize);
+        for _ in 0..frames.max(1) {
+            let uniform = IntegratorUniform::build(
+                &self.camera,
+                &self.sun,
+                self.sky_top,
+                self.sky_horizon,
+                width,
+                height,
+                self.integrator.node_count,
+                self.integrator.tri_count,
+                samples_before,
+                &self.int_params,
+                None,
+            );
+            let start = Instant::now();
+            let mut encoder = self
+                .device
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("trace timing"),
+                });
+            self.integrator.dispatch(
+                &self.queue,
+                &mut encoder,
+                &uniform,
+                &compute_bg,
+                width,
+                height,
+            );
+            self.queue.submit(Some(encoder.finish()));
+            let _ = self.device.poll(wgpu::PollType::wait_indefinitely());
+            times.push(start.elapsed().as_secs_f64() * 1e3);
+            samples_before += self.int_params.spp;
+        }
+        let mean = times.iter().sum::<f64>() / times.len() as f64;
+        times.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let median = times[times.len() / 2];
+        (median, mean)
+    }
+
+    /// Advance the world clock one tick and, when the living layer actually
+    /// moved, re-splice the dynamic partition onto the cached static BVH, re-
+    /// upload it, and reset accumulation. STRATEGY (DYNAMICS): two-level splice
+    /// — the static hierarchy never re-sorts; only the tiny dynamic partition
+    /// rebuilds, fused under a new root by `Bvh::merge` (O(Sn+Dn) linear).
+    /// ACCUMULATION: continues progressively while every dynamic transform is
+    /// unchanged; the instant one changes (a bobbing lantern, every tick) the
+    /// BVH re-splices and accumulation resets — so a continuously moving world
+    /// renders live at `spp` samples/frame (no ghosting), and pauses converge.
+    /// PLAYGROUND — push reach (m), speed (m/s, the Op::Impulse velocity
+    /// delta) and aim radius (m, perpendicular tolerance off the view ray)
+    /// read from the environment, never hardcoded: `GAIA_PUSH_REACH`
+    /// (default 4 m — arm's length plus a step), `GAIA_PUSH_SPEED`
+    /// (default 5 m/s — a few m/s, enough to topple a rigid stack and, on a
+    /// weakly-bonded crate, tear it apart) and `GAIA_PUSH_AIM_RADIUS`
+    /// (default 0.9 m — a crate's own reach radius, so the crosshair need
+    /// not be pixel-perfect on a 0.8 m box).
+    fn push_params() -> (f32, f32, f32) {
+        let num = |name: &str, default: f32| {
+            std::env::var(name)
+                .ok()
+                .and_then(|v| v.parse::<f32>().ok())
+                .filter(|v| v.is_finite() && *v > 0.0)
+                .unwrap_or(default)
+        };
+        (
+            num("GAIA_PUSH_REACH", 4.0),
+            num("GAIA_PUSH_SPEED", 5.0),
+            num("GAIA_PUSH_AIM_RADIUS", 0.9),
+        )
+    }
+
+    /// PLAYGROUND — build the push op for a view ray: pick the nearest
+    /// pushable body the ray is aimed at within reach and name it in an
+    /// `Op::Impulse` carrying a `speed` m/s velocity delta along the ray.
+    /// Empty when nothing physical is under the crosshair (a silent miss) or
+    /// the realm has no physics. This is the WHOLE push door: the F key / a
+    /// locked click / the `/push` organ all funnel through the identical
+    /// Op::Impulse an agent would send.
+    ///
+    /// ADVISORY (merge-conductor #12): `examples/playground_push.rs` carries
+    /// its own `pick()` — a byte-for-byte copy of this ray/AIM_RADIUS logic,
+    /// kept verbatim on purpose so the example proves the window's actual
+    /// door rather than a stub. Extracting a shared fn was considered and
+    /// parked: the example lives outside the crate's public surface (no
+    /// clean import path today) and a shared helper would need its own
+    /// pub(crate) plumbing for one call site. Noted as copy-drift risk on
+    /// record — if `build_push_ops` changes, `pick()` must change with it.
+    fn build_push_ops(&self, eye: Vec3, yaw: f32, pitch: f32) -> Vec<Op> {
+        let Some(physics) = self.scene.physics() else {
+            return Vec::new();
+        };
+        let (reach, speed, aim_radius) = Self::push_params();
+        let cos_pitch = pitch.cos();
+        let dir = Vec3::new(-yaw.sin() * cos_pitch, pitch.sin(), -yaw.cos() * cos_pitch);
+        let mut best: Option<(f32, String)> = None;
+        for (gaia_id, centroid) in physics.push_targets() {
+            let c = Vec3::new(centroid[0] as f32, centroid[1] as f32, centroid[2] as f32);
+            let v = c - eye;
+            let t = v.dot(dir);
+            if t <= 0.0 || t > reach {
+                continue; // behind the eye or past arm's reach
+            }
+            let perp = (v - dir * t).length();
+            if perp > aim_radius {
+                continue; // the ray does not pass through this body
+            }
+            if best.as_ref().is_none_or(|(bt, _)| t < *bt) {
+                best = Some((t, gaia_id));
+            }
+        }
+        match best {
+            Some((_, id)) => {
+                let dv = dir * speed;
+                vec![Op::Impulse(ImpulseOp {
+                    id,
+                    delta_velocity: [dv.x as f64, dv.y as f64, dv.z as f64],
+                    extra: Default::default(),
+                })]
+            }
+            None => Vec::new(),
+        }
+    }
+
+    fn advance_world(&mut self, body_speed: f32, walker: Option<WalkerPose>, push_ops: &[Op]) {
+        // S14: time each sub-stage of the ~7 ms advance so the thief is split.
+        self.last_world_stages = WorldStages::default();
+        let has_bodies = !self.scene.bodies.is_empty();
+        if self.scene.dynamics.entities().is_empty() && !has_bodies {
+            return; // a still realm never pays the living-layer cost
+        }
+        let t_skin = Instant::now();
+        // RITE V·V1 — drive the embodied bodies from the walker's velocity: the
+        // commanded speed feeds each body's SAMA state machine, its pose re-skins
+        // the body per tick. A walking body changes the dynamic partition every
+        // tick even when the living models are still, so it forces a re-splice.
+        // RITE V FINAL WELD — `walker` (its world pose) drives walker-ATTACHED
+        // bodies (`follows: "walker"`): they TRACK the walker, gait derived from
+        // displacement, instead of gaiting in place off the broadcast.
+        let bodies_animating = self.scene.command_bodies_walked(body_speed, walker);
+        self.last_world_stages.command = t_skin.elapsed().as_secs_f64() * 1000.0;
+        let t_tick = Instant::now();
+        self.scene.tick_with_ops(push_ops);
+        self.last_world_stages.tick = t_tick.elapsed().as_secs_f64() * 1000.0;
+        let [kami, apply, physics, rederive, solver_step, poll] =
+            self.scene.last_tick_breakdown();
+        self.last_world_stages.kami = kami;
+        self.last_world_stages.apply = apply;
+        self.last_world_stages.physics = physics;
+        self.last_world_stages.rederive = rederive;
+        self.last_world_stages.solver_step = solver_step;
+        self.last_world_stages.poll = poll;
+        self.last_world_stages.skin =
+            self.last_world_stages.command + self.last_world_stages.tick;
+        let models = self.scene.dynamics.model_matrices();
+        if models == self.last_models && !bodies_animating {
+            return; // nothing moved — keep accumulating
+        }
+        // OWN-EYE CULL — the window camera IS the walker's own eye every frame
+        // (`set_view_pose` and this tick's `walker` share one pose, wired in the
+        // run loop below), so a walker-attached body never renders inside it.
+        let t_gather = Instant::now();
+        let dynamic_tris = self.scene.dynamic_leaf_triangles_for_eye(
+            self.camera.eye,
+            scrying_glass::scene::OWN_EYE_EPSILON_M,
+            self.draw_own_body,
+        );
+        self.last_world_stages.gather = t_gather.elapsed().as_secs_f64() * 1000.0;
+        let t_splice = Instant::now();
+        self.splice.update(&self.static_bvh, &dynamic_tris);
+        self.last_world_stages.splice = t_splice.elapsed().as_secs_f64() * 1000.0;
+        let t_upload = Instant::now();
+        self.integrator
+            .update_bvh(&self.device, &self.splice.merged);
+        self.retina_epoch = self.retina_epoch.wrapping_add(1);
+        self.retina_cache.clear();
+        self.last_world_stages.upload = t_upload.elapsed().as_secs_f64() * 1000.0;
+        // The node/tri buffers changed — rebuild the bind groups (they bind them)
+        // and drop the stale samples (moved geometry invalidates the mean).
+        self.reset_surface_accum();
+        self.last_models = models;
+    }
+
+    fn resize(&mut self, size: PhysicalSize<u32>) {
+        if size.width > 0
+            && size.height > 0
+            && (size.width != self.config.width || size.height != self.config.height)
+        {
+            self.config.width = size.width;
+            self.config.height = size.height;
+            if let Some(surface) = &self.surface {
+                surface.configure(&self.device, &self.config);
+            }
+            // The surface (window-size) alone changed. God's canvas is fixed
+            // resolution (canvas_width/canvas_height); accumulation and
+            // offscreen capture ride the canvas, not the window, and remain
+            // untouched here.
+        }
+    }
+
+    /// Point the windowed camera at the embodied player's eye. Movement resets
+    /// the accumulation on the next frame (detected by `last_view`).
+    fn set_view_pose(&mut self, eye: Vec3, yaw: f32, pitch: f32) {
+        self.camera.eye = eye;
+        self.camera.yaw = yaw;
+        self.camera.pitch = pitch;
+    }
+
+    fn view_key(&self) -> ([f32; 3], f32, f32) {
+        (self.camera.eye.to_array(), self.camera.yaw, self.camera.pitch)
+    }
+
+    /// Submit ONE traced frame (dispatch → offscreen/surface blit → capture
+    /// copy → present) WITHOUT waiting on the GPU, returning the submission's
+    /// `SubmissionIndex`. The pipelined `run_render_loop` completes the PREVIOUS
+    /// frame's submission (explicit `Wait`) only AFTER the NEXT frame's CPU
+    /// stages (`advance_world`) have run — so frame N+1's skin/tick/splice/
+    /// upload overlap frame N's GPU trace (LEVER 2, the shape `perf_audit`'s
+    /// ATOM B / `live_loop_audit` proved bit-identical to serial). Scheduling
+    /// only: `update_bvh` allocates FRESH node/tri buffers each frame, so frame
+    /// N's in-flight trace keeps reading its own (wgpu tracks GPU-side lifetime
+    /// by the in-flight command buffer), and dispatch+blit ride ONE submission
+    /// so each frame's blit reads exactly its own trace — content is unchanged.
+    fn render(&mut self, size: PhysicalSize<u32>) -> Option<wgpu::SubmissionIndex> {
+        self.resize(size);
+
+        // THE PURGE (Architect, whip 170): only Pleroma reaches a surface. There
+        // is NO raw-accum fallback present — a window shows exactly Pleroma's
+        // 640×480 canvas (nearest-integer letterbox) or BLACK. The classical
+        // integrator still runs OFFSCREEN ONLY (teacher/ordeal/parity tooling &
+        // headless /scry); it can never blit to a surface.
+        #[cfg(target_os = "macos")]
+        if self.net_present_enabled {
+            match self.net_present_frame() {
+                Ok(idx) => return idx,
+                // Pleroma rig could not build/run → BLACK, never the raw path.
+                Err(()) => return self.present_black(),
+            }
+        }
+        // No Pleroma → BLACK by law. The classical raw-accum present is DELETED:
+        // a surface shows Pleroma or black, never the 1-spp trace; an offscreen
+        // run with no Pleroma yields a black capture (present_black clears the
+        // offscreen target and returns None when there is no surface).
+        self.present_black()
+    }
+
+    /// THE PURGE (Architect, whip 170): the ONLY non-Pleroma runtime state is
+    /// BLACK. Clears the offscreen capture target to black (so `/scry` reads
+    /// black, never a stale/raw image) and, if a window surface exists, clears
+    /// it to black and presents it. Returns the submission (or None when there
+    /// is no surface). No raw-accum trace, no dots, no evidence — REAL or BLACK.
+    fn present_black(&mut self) -> Option<wgpu::SubmissionIndex> {
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("present black"),
+            });
+        // Black the offscreen capture target (the /scry source).
+        {
+            let _pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("black offscreen"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &self.offscreen.view,
+                    depth_slice: None,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+        }
+        let surface_frame = match self.surface.as_ref().map(|s| s.get_current_texture()) {
+            Some(
+                wgpu::CurrentSurfaceTexture::Success(frame)
+                | wgpu::CurrentSurfaceTexture::Suboptimal(frame),
+            ) => Some(frame),
+            Some(wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost) => {
+                if let Some(surface) = &self.surface {
+                    surface.configure(&self.device, &self.config);
+                }
+                None
+            }
+            _ => None,
+        };
+        if let Some(frame) = &surface_frame {
+            let view = frame
+                .texture
+                .create_view(&wgpu::TextureViewDescriptor::default());
+            let _pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("black surface"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    depth_slice: None,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+        }
+        let submission = self.queue.submit(Some(encoder.finish()));
+        if let Some(frame) = surface_frame {
+            self.queue.present(frame);
+        }
+        Some(submission)
+    }
+
+    /// NEURAL-LIVE N0.c: one live frame through the ONE net. Builds/rebuilds the
+    /// pooled rig on demand, traces low radiance + native AOV, gathers features
+    /// on the GPU, runs the MPSGraph forward, undoes the log-demod, and presents
+    /// the result 1:1 to both the surface and the offscreen capture target (so
+    /// `/screenshot` reads the net's frame). Records the per-stage budget.
+    /// `Err(())` means the rig could not be built (flag self-cleared) — the
+    /// caller falls through to the normal present.
+    #[cfg(target_os = "macos")]
+    fn net_present_frame(&mut self) -> Result<Option<wgpu::SubmissionIndex>, ()> {
+        let (surface_w, surface_h) = (self.config.width, self.config.height);
+        // RESOLUTION OF GOD (law 0a25530): trace, net AND present all run at the
+        // 640×480 canvas — the net NEVER enlarges a small trace to the window.
+        // low == target == render res; the window gets it by a nearest/integer
+        // display blit only. Anamorphic camera framing (surface aspect below)
+        // maps the canvas onto the window without geometric distortion, exactly
+        // as the normal `render` path does.
+        let (low_w, low_h) = (self.canvas_width, self.canvas_height);
+        let (target_w, target_h) = (self.canvas_width, self.canvas_height);
+
+        let rebuild = match &self.net_present {
+            Some(np) => np.target_w != target_w || np.target_h != target_h,
+            None => true,
+        };
+        if rebuild {
+            match NetPresent::new(
+                &self.device,
+                &self.queue,
+                &self.integrator,
+                low_w,
+                low_h,
+                target_w,
+                target_h,
+            ) {
+                Ok(np) => {
+                    eprintln!(
+                        "[n0c] net-present rig pooled (God's res): trace {low_w}x{low_h} → net {target_w}x{target_h} → nearest blit → surface {surface_w}x{surface_h} ({} px)",
+                        (target_w as usize) * (target_h as usize)
+                    );
+                    self.net_present = Some(np);
+                }
+                Err(e) => {
+                    eprintln!("[n0c] net-present disabled (build failed): {e}");
+                    self.net_present_enabled = false;
+                    return Err(());
+                }
+            }
+        }
+
+        // CONFORM (law 43f807c) + THE PURGE: frame the trace at the CANVAS's own
+        // aspect (640×480 = 4:3), NOT the window surface. The present blit then
+        // LETTERBOXES this 4:3 canvas at the largest nearest-integer scale into
+        // the window (black bars around it) — so the canvas keeps square pixels
+        // and true geometry, never a full-bleed anamorphic stretch to surface-res.
+        let (right, up, _forward) = self.camera.basis();
+        let canvas_aspect = target_w as f32 / target_h.max(1) as f32;
+        let half = (self.camera.fov_y_radians * 0.5).tan();
+        let r = right * (half * canvas_aspect);
+        let u = up * half;
+        let apply_aspect = |uni: &mut IntegratorUniform| {
+            uni.right = [r.x, r.y, r.z, 0.0];
+            uni.up = [u.x, u.y, u.z, 0.0];
+        };
+        let noisy = IntegratorParams {
+            spp: 1,
+            ..self.int_params.clone()
+        };
+        let mut uni_low = IntegratorUniform::build(
+            &self.camera,
+            &self.sun,
+            self.sky_top,
+            self.sky_horizon,
+            low_w,
+            low_h,
+            self.integrator.node_count,
+            self.integrator.tri_count,
+            0,
+            &noisy,
+            None,
+        );
+        apply_aspect(&mut uni_low);
+        let mut uni_target = IntegratorUniform::build(
+            &self.camera,
+            &self.sun,
+            self.sky_top,
+            self.sky_horizon,
+            target_w,
+            target_h,
+            self.integrator.node_count,
+            self.integrator.tri_count,
+            0,
+            &self.int_params,
+            None,
+        );
+        apply_aspect(&mut uni_target);
+        // Present: params.xy = the 640×480 canvas (present_accum dims);
+        // surface.xy = the window; mode 1 = nearest — the display blit scales
+        // God's res onto any surface with no interpolation (integer when the
+        // window is a whole multiple, nearest otherwise). No neural enlarge.
+        let mut blit_uniform = uni_target;
+        blit_uniform.surface = [surface_w, surface_h, 1, 0]; // nearest canvas→window.
+
+        // V7-LIVE LANE STAGE 3: this frame's camera pose, for the recurrent
+        // history reprojection (gather_hist_split) — built once here (cheap)
+        // regardless of whether the loaded net is v7; unused otherwise.
+        let cur_cam = v7_cam_pose(&self.camera, target_w, target_h);
+
+        // Take the rig out to avoid borrowing `self` twice; put it back after.
+        let mut np = self.net_present.take().expect("net-present rig present");
+        let (trace_ms, gather_ms, net_ms, resolve_ms) = np.resolve_frame(
+            &self.device,
+            &self.queue,
+            &self.integrator,
+            &uni_low,
+            &uni_target,
+            &blit_uniform,
+            cur_cam,
+        );
+
+        // —— STAGE: present (blit the net frame to surface + offscreen, capture) ——
+        let t_present = Instant::now();
+        let surface_frame = match self.surface.as_ref().map(|s| s.get_current_texture()) {
+            Some(
+                wgpu::CurrentSurfaceTexture::Success(frame)
+                | wgpu::CurrentSurfaceTexture::Suboptimal(frame),
+            ) => Some(frame),
+            Some(wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost) => {
+                if let Some(surface) = &self.surface {
+                    surface.configure(&self.device, &self.config);
+                }
+                None
+            }
+            _ => None,
+        };
+        // OFFSCREEN-VS-SURFACE UNIFORM SPLIT (motion-bug forensics fix,
+        // 2026-07-24): `blit_fs` (integrator.wgsl) reads `u.surface` to compute
+        // its nearest-integer LETTERBOX scale/offset against whatever texture
+        // it is ACTUALLY bound to — but `integrator.uniform_buf` is ONE shared
+        // buffer, and `resolve_frame`'s own last write left it holding the
+        // SURFACE-sized `blit_uniform` ([surface_w,surface_h,...]), correct only
+        // for the surface blit below. Blitting the OFFSCREEN target (exactly
+        // canvas-sized, 640x480) against that surface-sized uniform makes
+        // `blit_fs` compute a letterbox scale/offset for a texture ~3x larger
+        // than the one it is actually writing (`scale=min(sw/tw,sh/th)`,
+        // `ox=(sw-dw)/2`, `oy=(sh-dh)/2` — all in SURFACE units), so the real
+        // 640x480 offscreen texture only ever samples the small sub-rect
+        // `[ox,ox+dw) x [oy,oy+dh)` intersected with its own bounds — a fixed
+        // black quadrant (`px<ox||py<oy`) covering ~half the frame REGARDLESS
+        // of camera motion (proven: identical black-rect geometry in a static
+        // capture and three in-motion captures, scratch/v9p2-*.png). This is
+        // the bug that made every `/scry`/`capture_presented` readback until now
+        // dishonest evidence for the net's own output — fixed by writing a
+        // CANVAS-IDENTITY uniform (surface=[target_w,target_h,1,0], the SAME
+        // 1:1 pattern `capture_belief` already uses for its own canvas-sized
+        // target) before the offscreen blit, in its OWN submit+wait so the two
+        // blits never race the ONE shared uniform buffer (`queue.write_buffer`
+        // applies before the NEXT submit, not at its recording point — two
+        // writes before one submit would both apply before that submit's GPU
+        // work runs, silently discarding the first). Restores the SURFACE
+        // uniform immediately after for the surface blit below, unchanged.
+        let mut canvas_identity_uniform = uni_target;
+        canvas_identity_uniform.surface = [target_w, target_h, 1, 0]; // 1:1, no letterbox.
+        self.queue.write_buffer(
+            &self.integrator.uniform_buf,
+            0,
+            bytemuck::bytes_of(&canvas_identity_uniform),
+        );
+        let mut offscreen_encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("net offscreen present (canvas-identity uniform)"),
+            });
+        self.integrator.blit(
+            &mut offscreen_encoder,
+            &self.offscreen.view,
+            np.present_bg_for(np.last_set),
+            "net offscreen present",
+        );
+        self.queue.submit(Some(offscreen_encoder.finish()));
+        let _ = self.device.poll(wgpu::PollType::wait_indefinitely());
+        self.queue.write_buffer(
+            &self.integrator.uniform_buf,
+            0,
+            bytemuck::bytes_of(&blit_uniform),
+        );
+
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("net present + capture"),
+            });
+        if let Some(frame) = &surface_frame {
+            let view = frame
+                .texture
+                .create_view(&wgpu::TextureViewDescriptor::default());
+            self.integrator
+                .blit(&mut encoder, &view, np.present_bg_for(np.last_set), "net surface present");
+        }
+        // N0.j S13.2 KILL THE MEASUREMENT TAX: the per-frame offscreen readback
+        // (copy_texture_to_buffer + map submit) fed `latest` so a bare `/scry`
+        // could be served cheaply — but it ran EVERY frame whether anyone looked
+        // or not, ~measurement tax on the render thread. It is now ON-DEMAND
+        // (`capture_presented` reads the current offscreen texture when `/scry`
+        // asks); the per-frame copy runs only under the A/B toggle
+        // `GAIA_NATIVE_PERFRAME_READBACK=1`. The offscreen BLIT above still runs
+        // every frame, so the texture always holds the latest presented image
+        // for the on-demand path to read.
+        let t_readback = Instant::now();
+        if self.perframe_readback {
+            if let Some(index) = self.offscreen.claim_slot() {
+                let slot = &self.offscreen.slots[index];
+                encoder.copy_texture_to_buffer(
+                    wgpu::TexelCopyTextureInfo {
+                        texture: &self.offscreen.texture,
+                        mip_level: 0,
+                        origin: wgpu::Origin3d::ZERO,
+                        aspect: wgpu::TextureAspect::All,
+                    },
+                    wgpu::TexelCopyBufferInfo {
+                        buffer: &slot.buffer,
+                        layout: wgpu::TexelCopyBufferLayout {
+                            offset: 0,
+                            bytes_per_row: Some(self.offscreen.padded_bytes_per_row),
+                            rows_per_image: Some(self.offscreen.height),
+                        },
+                    },
+                    wgpu::Extent3d {
+                        width: self.offscreen.width,
+                        height: self.offscreen.height,
+                        depth_or_array_layers: 1,
+                    },
+                );
+                let sender = self.capture_sender.clone();
+                let buffer = slot.buffer.clone();
+                let callback_buffer = buffer.clone();
+                let busy = slot.busy.clone();
+                let callback_busy = busy.clone();
+                let width = self.offscreen.width;
+                let height = self.offscreen.height;
+                let padded_bytes_per_row = self.offscreen.padded_bytes_per_row;
+                let pixel_order = self.pixel_order;
+                encoder.map_buffer_on_submit(&buffer, wgpu::MapMode::Read, .., move |result| {
+                    let capture = CaptureReady {
+                        result: result.map_err(|error| error.to_string()),
+                        buffer: callback_buffer,
+                        width,
+                        height,
+                        padded_bytes_per_row,
+                        pixel_order,
+                        busy: callback_busy,
+                    };
+                    if let Err(error) = sender.send(capture) {
+                        let capture = error.0;
+                        if capture.result.is_ok() {
+                            capture.buffer.unmap();
+                        }
+                        capture.busy.store(false, Ordering::Release);
+                    }
+                });
+            }
+        }
+        self.last_readback_ms = t_readback.elapsed().as_secs_f64() * 1000.0;
+        let submission = self.queue.submit(Some(encoder.finish()));
+        if let Some(frame) = surface_frame {
+            self.queue.present(frame);
+        }
+        let blit_ms = t_present.elapsed().as_secs_f64() * 1000.0;
+        // S3: demod (resolve_ms) and the surface blit are now separate columns.
+        let total = trace_ms + gather_ms + net_ms + resolve_ms + blit_ms;
+        np.record(NetTimings {
+            trace: trace_ms,
+            gather: gather_ms,
+            net: net_ms,
+            demod: resolve_ms,
+            present: blit_ms,
+            total,
+        });
+        self.net_present = Some(np);
+        Ok(Some(submission))
+    }
+
+    /// S12.5 AI DEBUG DOOR — the BELIEF eye. Re-demods THIS frame's net output
+    /// (the last committed set, still resident in the pooled MTLBuffer) in
+    /// belief mode (raw `exp(dl)-1`, NO albedo multiply) into a fresh canvas-res
+    /// offscreen and reads it back — the accum-belief PNG owed since n0e. Runs
+    /// on the render thread (like `capture_pose`); does not disturb the live
+    /// present accum's next frame (it recomputes it). macOS-only / net-present.
+    /// REMAP NOTE: THE PURGE deleted this from its own app-present timeline;
+    /// main kept the S12.5 debug door explicitly gated (`?eye=belief`, never
+    /// default), so it is restored here alongside that gate.
+    #[cfg(target_os = "macos")]
+    fn capture_belief(&mut self) -> Result<CapturedFrame, String> {
+        if self.net_present.is_none() {
+            return Err(
+                "belief eye needs the net-present rig (GAIA_NATIVE_NET_PRESENT=true)".into(),
+            );
+        }
+        let np = self.net_present.take().expect("net-present rig present");
+        let out = self.capture_belief_inner(&np);
+        self.net_present = Some(np);
+        out
+    }
+
+    #[cfg(target_os = "macos")]
+    fn capture_belief_inner(&mut self, np: &NetPresent) -> Result<CapturedFrame, String> {
+        let (w, h) = (np.target_w, np.target_h);
+        // V9 EYE-TEST WINDOW BUILD: the belief-eye debug door is RdirectLive's
+        // own pooled-output-set concept (S9 double buffer) — not wired for the
+        // U-Net's synchronous path this atom adds. Use plain /scry for v9.
+        if np.is_v9 {
+            return Err("belief eye (?eye=belief) is not wired for the v9 U-Net body — use plain /scry".to_string());
+        }
+        let net_out = np
+            .live
+            .as_ref()
+            .expect("non-v9 path: live is Some")
+            .output_buffer_set(np.last_set)
+            .ok_or_else(|| "belief: no pooled net output buffer".to_string())?;
+        // Belief demod: raw net radiance into the present accum (overwritten
+        // next live frame). One dispatch, canvas-res.
+        let mut enc = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("belief demod"),
+            });
+        np.demod.encode(
+            &self.device,
+            &self.queue,
+            &mut enc,
+            net_out,
+            &np.net_aov[np.last_set],
+            np.present_accum_for(np.last_set),
+            np.n as u32,
+            true, // BELIEF
+        );
+        self.queue.submit(Some(enc.finish()));
+        let _ = self.device.poll(wgpu::PollType::wait_indefinitely());
+
+        // 1:1 nearest blit present_accum → a fresh canvas-res sRGB target.
+        let mut blit_uniform = IntegratorUniform::build(
+            &self.camera,
+            &self.sun,
+            self.sky_top,
+            self.sky_horizon,
+            w,
+            h,
+            self.integrator.node_count,
+            self.integrator.tri_count,
+            0,
+            &self.int_params,
+            None,
+        );
+        blit_uniform.surface = [w, h, 1, 0]; // nearest 1:1 canvas→target
+        self.queue
+            .write_buffer(&self.integrator.uniform_buf, 0, bytemuck::bytes_of(&blit_uniform));
+
+        let target = OffscreenTarget::new(&self.device, self.config.format, w, h);
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("belief present + capture"),
+            });
+        self.integrator
+            .blit(&mut encoder, &target.view, np.present_bg_for(np.last_set), "belief present");
+        let slot = &target.slots[0];
+        encoder.copy_texture_to_buffer(
+            wgpu::TexelCopyTextureInfo {
+                texture: &target.texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::TexelCopyBufferInfo {
+                buffer: &slot.buffer,
+                layout: wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(target.padded_bytes_per_row),
+                    rows_per_image: Some(h),
+                },
+            },
+            wgpu::Extent3d { width: w, height: h, depth_or_array_layers: 1 },
+        );
+        let buffer = slot.buffer.clone();
+        let (done_tx, done_rx) = mpsc::channel::<Result<(), String>>();
+        encoder.map_buffer_on_submit(&buffer, wgpu::MapMode::Read, .., move |result| {
+            let _ = done_tx.send(result.map(|_| ()).map_err(|e| e.to_string()));
+        });
+        self.queue.submit(Some(encoder.finish()));
+        let _ = self.device.poll(wgpu::PollType::wait_indefinitely());
+        done_rx
+            .recv()
+            .map_err(|e| format!("belief readback channel closed: {e}"))??;
+        let mapped = buffer
+            .get_mapped_range(..)
+            .map_err(|e| format!("belief framebuffer map: {e}"))?;
+        let row_bytes = (w * BYTES_PER_PIXEL) as usize;
+        let mut rgba = Vec::with_capacity(row_bytes * h as usize);
+        for row in mapped
+            .chunks(target.padded_bytes_per_row as usize)
+            .take(h as usize)
+        {
+            rgba.extend_from_slice(&row[..row_bytes]);
+        }
+        if matches!(self.pixel_order, PixelOrder::Bgra) {
+            for pixel in rgba.chunks_exact_mut(BYTES_PER_PIXEL as usize) {
+                pixel.swap(0, 2);
+            }
+        }
+        drop(mapped);
+        buffer.unmap();
+        Ok(CapturedFrame { width: w, height: h, rgba })
+    }
+
+    /// N0.j S13.2 ON-DEMAND READBACK: read the CURRENT offscreen texture (the
+    /// last presented net frame — the offscreen blit runs every frame) back to
+    /// the CPU, only when a bare `/scry` actually asks. This replaces the old
+    /// per-frame readback that fed `latest`: no re-trace, no demod, just the one
+    /// copy+map the viewer needs. Runs on the render thread (owns the device).
+    fn capture_presented(&mut self) -> Result<CapturedFrame, String> {
+        let (w, h) = (self.offscreen.width, self.offscreen.height);
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("presented on-demand readback"),
+            });
+        let slot = &self.offscreen.slots[0];
+        encoder.copy_texture_to_buffer(
+            wgpu::TexelCopyTextureInfo {
+                texture: &self.offscreen.texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::TexelCopyBufferInfo {
+                buffer: &slot.buffer,
+                layout: wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(self.offscreen.padded_bytes_per_row),
+                    rows_per_image: Some(h),
+                },
+            },
+            wgpu::Extent3d { width: w, height: h, depth_or_array_layers: 1 },
+        );
+        let buffer = slot.buffer.clone();
+        let (done_tx, done_rx) = mpsc::channel::<Result<(), String>>();
+        encoder.map_buffer_on_submit(&buffer, wgpu::MapMode::Read, .., move |result| {
+            let _ = done_tx.send(result.map(|_| ()).map_err(|e| e.to_string()));
+        });
+        self.queue.submit(Some(encoder.finish()));
+        let _ = self.device.poll(wgpu::PollType::wait_indefinitely());
+        done_rx
+            .recv()
+            .map_err(|e| format!("presented readback channel closed: {e}"))??;
+        let mapped = buffer
+            .get_mapped_range(..)
+            .map_err(|e| format!("presented framebuffer map: {e}"))?;
+        let row_bytes = (w * BYTES_PER_PIXEL) as usize;
+        let mut rgba = Vec::with_capacity(row_bytes * h as usize);
+        for row in mapped
+            .chunks(self.offscreen.padded_bytes_per_row as usize)
+            .take(h as usize)
+        {
+            rgba.extend_from_slice(&row[..row_bytes]);
+        }
+        if matches!(self.pixel_order, PixelOrder::Bgra) {
+            for pixel in rgba.chunks_exact_mut(BYTES_PER_PIXEL as usize) {
+                pixel.swap(0, 2);
+            }
+        }
+        drop(mapped);
+        buffer.unmap();
+        Ok(CapturedFrame { width: w, height: h, rgba })
+    }
+
+    /// S12.5: the live per-stage budget JSON (`/budget`) and forward-state JSON
+    /// (`/state`), or an honest "net-present off" stub.
+    fn debug_budget_json(&self) -> String {
+        // N0.j S13: splice the OUTSIDE-work block into the net budget JSON so
+        // `/budget` carries both the GPU stage table AND the ~9 ms non-net
+        // frame-loop segments (world/readback/http/loop_total) in one door.
+        #[cfg(target_os = "macos")]
+        if let Some(np) = &self.net_present {
+            let base = np.budget_json();
+            let outside = self.outside.json();
+            let stages = self.outside.world_stages_json();
+            return match base.strip_suffix('}') {
+                Some(head) => format!("{head},{outside},{stages}}}"),
+                None => base,
+            };
+        }
+        format!(
+            "{{\"frames\":0,\"note\":\"net-present off\",{},{}}}",
+            self.outside.json(),
+            self.outside.world_stages_json()
+        )
+    }
+
+    /// V7-LIVE LANE PERF ROOM 7: flush the buffered `GAIA_FRAME_CSV` series to
+    /// disk. Called from the offscreen loop's shutdown-flush hook (the
+    /// `/frame_csv` HTTP trigger), never per-frame.
+    fn flush_frame_csv(&self) {
+        #[cfg(target_os = "macos")]
+        if let Some(np) = &self.net_present {
+            np.write_frame_csv();
+        }
+    }
+
+    fn debug_state_json(&self) -> String {
+        #[cfg(target_os = "macos")]
+        if let Some(np) = &self.net_present {
+            return np.state_json();
+        }
+        format!(
+            "{{\"path\":\"raster\",\"canvas\":[{},{}],\"note\":\"net-present off\"}}",
+            self.config.width, self.config.height
+        )
+    }
+
+    /// The moving eye: integrate `capture_frames` accumulation frames from an
+    /// arbitrary pose to a per-request offscreen target and read it back. Runs on
+    /// the render thread; the surface loop's own accumulation is untouched.
+    fn capture_pose(&mut self, params: &ScryParams) -> Result<CapturedFrame, String> {
+        let width = self.canvas_width;
+        let height = self.canvas_height;
+        let fov = match params.fov {
+            Some(degrees) => {
+                if !(degrees > 0.0 && degrees < 180.0) {
+                    return Err("fov must be between 0 and 180 degrees".into());
+                }
+                degrees.to_radians()
+            }
+            None => self.camera.fov_y_radians,
+        };
+        let camera = Camera {
+            eye: params.pos.map(Vec3::from_array).unwrap_or(self.camera.eye),
+            yaw: params.yaw.unwrap_or(self.camera.yaw),
+            pitch: params.pitch.unwrap_or(self.camera.pitch),
+            fov_y_radians: fov,
+            near: self.camera.near,
+            far: self.camera.far,
+        };
+
+        // ITEM 16 (de-charter): the trace→denoise→upscale chain exists only as
+        // an explicitly named teacher/benchmark LAB surface. Neither a missing
+        // query parameter nor a `resolve` selector can enter it.
+        if params.teacher_benchmark {
+            return self.capture_pose_teacher_benchmark(&camera, width, height);
+        }
+        // Fixed canvas capture is the same nearest present path as the window.
+
+        // OWN-EYE CULL — the persistent `self.integrator` buffers already carry
+        // the OWN-eye-culled geometry (`advance_world` keeps them in lockstep
+        // with `self.camera.eye`, the walker's own eye). A default `/scry` (no
+        // `pos` override) IS that same eye, so the fast path below needs no
+        // rebuild. An EXPLICIT moving eye (`?pos=...`) may be a FOREIGN eye —
+        // any eye that is not the walker's own must still see her — so when one
+        // is given we build a throwaway splice for THIS capture only and
+        // restore the persistent (own-eye) buffers before returning, so the
+        // live window's next frame is unaffected.
+        let foreign_splice = params.pos.map(|_| {
+            let tris = self.scene.dynamic_leaf_triangles_for_eye(
+                camera.eye,
+                scrying_glass::scene::OWN_EYE_EPSILON_M,
+                self.draw_own_body,
+            );
+            DynamicSplice::build(
+                &self.static_bvh,
+                &tris,
+                &self.bvh_params.dynamic(),
+                self.refit_params,
+            )
+        });
+        if let Some(foreign) = &foreign_splice {
+            self.integrator.update_bvh(&self.device, &foreign.merged);
+        }
+        // Whatever happens below (success or an early `?` error), put the
+        // persistent own-eye-culled buffers back before this function returns
+        // — the live window's next frame must never see the foreign geometry.
+        let result = self.capture_pose_fixed(&camera, width, height);
+        if foreign_splice.is_some() {
+            self.integrator
+                .update_bvh(&self.device, &self.splice.merged);
+        }
+        result
+    }
+
+    /// `/retina`: exact primary rays over the tracer's post-transmute leaf
+    /// geometry; no framebuffer, radiance, or secondary-ray path is involved.
+    fn capture_retina(&mut self, params: &RetinaParams) -> Result<String, String> {
+        let width = params.width;
+        let height = params.height;
+        let fov = match params.pose.fov {
+            Some(degrees) if degrees > 0.0 && degrees < 180.0 => degrees.to_radians(),
+            Some(_) => return Err("fov must be between 0 and 180 degrees".into()),
+            None => self.camera.fov_y_radians,
+        };
+        let camera = Camera {
+            eye: params.pose.pos.map(Vec3::from_array).unwrap_or(self.camera.eye),
+            yaw: params.pose.yaw.unwrap_or(self.camera.yaw), pitch: params.pose.pitch.unwrap_or(self.camera.pitch),
+            fov_y_radians: fov, near: self.camera.near, far: self.camera.far,
+        };
+        let culls_own_body = self.scene.retina_culls_own_body(camera.eye, scrying_glass::scene::OWN_EYE_EPSILON_M, self.draw_own_body);
+        let scene = &self.scene;
+        let (bvh, ordered_tags) = self.retina_cache.get_or_build(
+            self.retina_epoch, culls_own_body, &self.bvh_params,
+            || scene.retina_triangles_for_eye(camera.eye, scrying_glass::scene::OWN_EYE_EPSILON_M, self.draw_own_body),
+        );
+        let base = retina::trace(bvh, ordered_tags, &camera, width, height, params.layers);
+        let fovea = params.fovea.iter().map(|level| serde_json::json!({
+            "center": level.center, "radius": level.radius, "scale": level.scale,
+            "image": retina::trace_window(bvh, ordered_tags, &camera, width.saturating_mul(level.scale), height.saturating_mul(level.scale), params.layers, level.center, level.radius),
+        })).collect::<Vec<_>>();
+        serde_json::to_string(&serde_json::json!({"base": base, "fovea": fovea})).map_err(|error| error.to_string())
+    }
+
+    /// Fixed-canvas `/scry` dispatch + readback — split out of
+    /// [`Renderer::capture_pose`] so its OWN-EYE CULL restore always runs.
+    fn capture_pose_fixed(
+        &mut self,
+        camera: &Camera,
+        width: u32,
+        height: u32,
+    ) -> Result<CapturedFrame, String> {
+        let accum = self.integrator.make_accum(&self.device, width, height);
+        let compute_bg = self.integrator.compute_bind_group(&self.device, &accum);
+        let blit_bg = self.integrator.blit_bind_group(&self.device, &accum);
+
+        let mut samples_before = 0u32;
+        for _ in 0..self.capture_frames.max(1) {
+            let uniform = IntegratorUniform::build(
+                &camera,
+                &self.sun,
+                self.sky_top,
+                self.sky_horizon,
+                width,
+                height,
+                self.integrator.node_count,
+                self.integrator.tri_count,
+                samples_before,
+                &self.int_params,
+                None,
+            );
+            let mut encoder = self
+                .device
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("scry integrate"),
+                });
+            self.integrator.dispatch(
+                &self.queue,
+                &mut encoder,
+                &uniform,
+                &compute_bg,
+                width,
+                height,
+            );
+            self.queue.submit(Some(encoder.finish()));
+            let _ = self.device.poll(wgpu::PollType::wait_indefinitely());
+            samples_before += self.int_params.spp;
+        }
+
+        // Present the converged mean to a fresh fixed-canvas sRGB target.
+        let mut uniform = IntegratorUniform::build(
+            camera,
+            &self.sun,
+            self.sky_top,
+            self.sky_horizon,
+            width,
+            height,
+            self.integrator.node_count,
+            self.integrator.tri_count,
+            samples_before,
+            &self.int_params,
+            None,
+        );
+        uniform.surface = [width, height, 1, 0];
+        self.queue.write_buffer(
+            &self.integrator.uniform_buf,
+            0,
+            bytemuck::bytes_of(&uniform),
+        );
+        let target = OffscreenTarget::new(&self.device, self.config.format, width, height);
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("scry present + capture"),
+            });
+        self.integrator
+            .blit(&mut encoder, &target.view, &blit_bg, "scry present");
+        let slot = &target.slots[0];
+        encoder.copy_texture_to_buffer(
+            wgpu::TexelCopyTextureInfo {
+                texture: &target.texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::TexelCopyBufferInfo {
+                buffer: &slot.buffer,
+                layout: wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(target.padded_bytes_per_row),
+                    rows_per_image: Some(height),
+                },
+            },
+            wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+        );
+        let buffer = slot.buffer.clone();
+        let (done_tx, done_rx) = mpsc::channel::<Result<(), String>>();
+        let callback_buffer = buffer.clone();
+        encoder.map_buffer_on_submit(&buffer, wgpu::MapMode::Read, .., move |result| {
+            let mapped = result.map_err(|error| error.to_string());
+            if mapped.is_err() {
+                let _ = callback_buffer;
+            }
+            let _ = done_tx.send(mapped.map(|_| ()));
+        });
+        self.queue.submit(Some(encoder.finish()));
+        let _ = self.device.poll(wgpu::PollType::wait_indefinitely());
+        done_rx
+            .recv()
+            .map_err(|error| format!("scry readback channel closed: {error}"))??;
+        let mapped = buffer
+            .get_mapped_range(..)
+            .map_err(|error| format!("scry framebuffer map: {error}"))?;
+        let row_bytes = (width * BYTES_PER_PIXEL) as usize;
+        let mut rgba = Vec::with_capacity(row_bytes * height as usize);
+        for row in mapped
+            .chunks(target.padded_bytes_per_row as usize)
+            .take(height as usize)
+        {
+            rgba.extend_from_slice(&row[..row_bytes]);
+        }
+        if matches!(self.pixel_order, PixelOrder::Bgra) {
+            for pixel in rgba.chunks_exact_mut(BYTES_PER_PIXEL as usize) {
+                pixel.swap(0, 2);
+            }
+        }
+        drop(mapped);
+        buffer.unmap();
+        Ok(CapturedFrame {
+            width,
+            height,
+            rgba,
+        })
+    }
+
+    /// TEACHER/BENCHMARK LAB SURFACE (ITEM 16): trace(low, 1 spp) → GPU
+    /// denoise → GPU neural upscale → 1:1 present → readback. This historical
+    /// chain is de-chartered: only `GET /scry?lab=teacher-benchmark` enters it;
+    /// no present-path or resolve default can select it. The sequence remains
+    /// available for the headless proofs in `examples/onepath_proof.rs` and the
+    /// viii2/viii3 ordeals. It traces the STATIC BVH (geometry-only AOV guide +
+    /// radiance); dynamics are absent, appropriate for a resolve-quality lab
+    /// comparison and never represented as live output.
+    fn capture_pose_teacher_benchmark(
+        &mut self,
+        camera: &Camera,
+        width: u32,
+        height: u32,
+    ) -> Result<CapturedFrame, String> {
+        let (low_w, low_h) = (width.div_ceil(2).max(1), height.div_ceil(2).max(1));
+        let data_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("data");
+        let denoiser = GpuDenoiser::new(
+            &self.device,
+            &deserialize_denoiser_weights(
+                &std::fs::read(data_dir.join("denoiser-weights-v1.bin"))
+                    .map_err(|e| format!("read denoiser weights: {e}"))?,
+            )
+            .ok_or_else(|| "deserialize denoiser weights".to_string())?,
+        );
+        let upscaler = GpuUpscaler::new(
+            &self.device,
+            &deserialize_upscaler_weights(
+                &std::fs::read(data_dir.join("upscaler-weights-v1.bin"))
+                    .map_err(|e| format!("read upscaler weights: {e}"))?,
+            )
+            .ok_or_else(|| "deserialize upscaler weights".to_string())?,
+        );
+
+        // trace(low, 1 spp) noisy radiance + low/hi geometry AOVs.
+        let noisy_params = IntegratorParams {
+            spp: 1,
+            ..self.int_params.clone()
+        };
+        let low_noisy = resolve_accum(&trace_headless(
+            &self.device,
+            &self.queue,
+            &self.static_bvh,
+            camera,
+            &self.sun,
+            self.sky_top,
+            self.sky_horizon,
+            low_w,
+            low_h,
+            1,
+            &noisy_params,
+            None,
+        ));
+        let (low_alb, low_nrm, low_dep) = split_aov(&trace_headless_aov(
+            &self.device,
+            &self.queue,
+            &self.static_bvh,
+            camera,
+            &self.sun,
+            self.sky_top,
+            self.sky_horizon,
+            low_w,
+            low_h,
+        ));
+        let (hi_alb, hi_nrm, hi_dep) = split_aov(&trace_headless_aov(
+            &self.device,
+            &self.queue,
+            &self.static_bvh,
+            camera,
+            &self.sun,
+            self.sky_top,
+            self.sky_horizon,
+            width,
+            height,
+        ));
+
+        // denoise(low) → upscale(→ surface) — the neural resolve.
+        let denoised = denoiser.denoise(
+            &self.device,
+            &self.queue,
+            &low_noisy,
+            &low_alb,
+            &low_nrm,
+            &low_dep,
+            low_w,
+            low_h,
+        );
+        let neural = upscaler.upscale(
+            &self.device,
+            &self.queue,
+            &denoised,
+            low_w,
+            low_h,
+            &hi_alb,
+            &hi_nrm,
+            &hi_dep,
+            width,
+            height,
+        );
+
+        // Present: upload the full-res linear image into a surface-sized accum
+        // (w = 1 sample) and 1:1 nearest-blit it to a fresh sRGB target — the
+        // SAME colour pipeline (linear accum → sRGB target OETF) the plain
+        // capture uses, so the A/B differs only in the resolve.
+        let cells: Vec<[f32; 4]> = neural.iter().map(|c| [c.x, c.y, c.z, 1.0]).collect();
+        let present = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("teacher benchmark present accum"),
+            size: (cells.len() * 16).max(16) as u64,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        self.queue
+            .write_buffer(&present, 0, bytemuck::cast_slice(&cells));
+        let blit_bg = self.integrator.blit_bind_group(&self.device, &present);
+        let mut uniform = IntegratorUniform::build(
+            camera,
+            &self.sun,
+            self.sky_top,
+            self.sky_horizon,
+            width,
+            height,
+            self.integrator.node_count,
+            self.integrator.tri_count,
+            0,
+            &self.int_params,
+            None,
+        );
+        uniform.surface = [width, height, 1, 0]; // nearest, 1:1 — no re-scale.
+        self.queue.write_buffer(
+            &self.integrator.uniform_buf,
+            0,
+            bytemuck::bytes_of(&uniform),
+        );
+
+        let target = OffscreenTarget::new(&self.device, self.config.format, width, height);
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("teacher benchmark present + capture"),
+            });
+        self.integrator.blit(
+            &mut encoder,
+            &target.view,
+            &blit_bg,
+            "teacher benchmark present",
+        );
+        let slot = &target.slots[0];
+        encoder.copy_texture_to_buffer(
+            wgpu::TexelCopyTextureInfo {
+                texture: &target.texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::TexelCopyBufferInfo {
+                buffer: &slot.buffer,
+                layout: wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(target.padded_bytes_per_row),
+                    rows_per_image: Some(height),
+                },
+            },
+            wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+        );
+        let buffer = slot.buffer.clone();
+        let (done_tx, done_rx) = mpsc::channel::<Result<(), String>>();
+        let callback_buffer = buffer.clone();
+        encoder.map_buffer_on_submit(&buffer, wgpu::MapMode::Read, .., move |result| {
+            let mapped = result.map_err(|error| error.to_string());
+            if mapped.is_err() {
+                let _ = callback_buffer;
+            }
+            let _ = done_tx.send(mapped.map(|_| ()));
+        });
+        self.queue.submit(Some(encoder.finish()));
+        let _ = self.device.poll(wgpu::PollType::wait_indefinitely());
+        done_rx
+            .recv()
+            .map_err(|error| format!("teacher benchmark readback channel closed: {error}"))??;
+        let mapped = buffer
+            .get_mapped_range(..)
+            .map_err(|error| format!("teacher benchmark framebuffer map: {error}"))?;
+        let row_bytes = (width * BYTES_PER_PIXEL) as usize;
+        let mut rgba = Vec::with_capacity(row_bytes * height as usize);
+        for row in mapped
+            .chunks(target.padded_bytes_per_row as usize)
+            .take(height as usize)
+        {
+            rgba.extend_from_slice(&row[..row_bytes]);
+        }
+        if matches!(self.pixel_order, PixelOrder::Bgra) {
+            for pixel in rgba.chunks_exact_mut(BYTES_PER_PIXEL as usize) {
+                pixel.swap(0, 2);
+            }
+        }
+        drop(mapped);
+        buffer.unmap();
+        Ok(CapturedFrame {
+            width,
+            height,
+            rgba,
+        })
+    }
+}
+
+/// THE PURGE (Architect, whip 170) deleted every heathen scry knob from the
+/// LIVE PRESENT path. REMAP NOTE: main's post-purge evolution reopened a
+/// narrow, explicitly-gated set — `teacher_benchmark` (`?lab=teacher-
+/// benchmark`, the cordoned ITEM 16 lab surface), `belief`/`presented` (the
+/// S12.5 AI debug door, on-demand readback, no re-trace), and pos/yaw/pitch/
+/// fov/width/height (foreign-eye captures for tooling) — none of them
+/// default-reachable; a bare `/scry` still serves only Pleroma's presented
+/// canvas. `resolve` stays parsed for query compatibility but no longer
+/// selects a present path (Pleroma is the only render).
+#[derive(Clone, Debug, Default)]
+struct ScryParams {
+    pos: Option<[f32; 3]>,
+    yaw: Option<f32>,
+    pitch: Option<f32>,
+    fov: Option<f32>,
+    /// Explicit lab gate for the de-chartered teacher/benchmark chain.
+    teacher_benchmark: bool,
+    width: Option<u32>,
+    height: Option<u32>,
+    /// S12.5 AI DEBUG DOOR: which eye to serve. `false`/absent = presented (the
+    /// live net-present frame / a pose capture); `true` = belief (the net's raw
+    /// radiance, re-demodded from THIS frame's net output with no albedo).
+    belief: bool,
+    /// The resolve to capture with: 0 bilinear, 1 nearest, 2 neural. Absent =
+    /// the window's GAIA_NATIVE_UPSCALE default. THE ONE RENDER PATH A/B knob.
+    resolve: Option<u32>,
+    /// N0.j S13.2: serve the CURRENT presented frame by an ON-DEMAND readback of
+    /// the offscreen texture (no re-trace) — set by the http handler for a bare
+    /// `/scry`, consumed by the render loop (`capture_presented`).
+    presented: bool,
+}
+
+struct ScryRequest {
+    params: ScryParams,
+    reply: mpsc::Sender<Result<CapturedFrame, String>>,
+}
+
+enum RenderRequest {
+    Scry(ScryRequest),
+    Retina { params: RetinaParams, reply: mpsc::Sender<Result<String, String>> },
+}
+
+#[derive(Clone, Debug)]
+struct FoveaParams {
+    center: [f32; 2],
+    radius: f32,
+    scale: u32,
+}
+
+#[derive(Clone, Debug)]
+struct RetinaParams {
+    pose: ScryParams,
+    width: u32,
+    height: u32,
+    layers: RetinaLayers,
+    fovea: Vec<FoveaParams>,
+}
+
+fn parse_retina_query(query: &str) -> Result<RetinaParams, String> {
+    let mut pose = ScryParams::default();
+    let mut width = 64;
+    let mut height = 64;
+    let mut layers = RetinaLayers { depth: true, normal: true, entity_id: true, material_id: true, world_pos: true };
+    let mut fovea = Vec::new();
+    for pair in query.split('&').filter(|part| !part.is_empty()) {
+        let (key, value) = pair.split_once('=').ok_or_else(|| format!("query segment {pair:?} must be key=value"))?;
+        if key == "fovea" {
+            for level in value.split(';') {
+                let values = level.split(',').collect::<Vec<_>>();
+                if values.len() != 4 { return Err("fovea must be center_x,center_y,radius,scale (semicolon separates levels)".into()); }
+                let center = [parse_finite_f32(values[0], "fovea.center_x")?, parse_finite_f32(values[1], "fovea.center_y")?];
+                let radius = parse_finite_f32(values[2], "fovea.radius")?;
+                let scale = values[3].parse::<u32>().map_err(|_| format!("fovea.scale must be a positive integer, got {:?}", values[3]))?;
+                if !(0.0..=1.0).contains(&center[0]) || !(0.0..=1.0).contains(&center[1]) || !(radius > 0.0 && radius <= 1.0) || scale == 0 { return Err("fovea needs center in 0..=1, radius in 0..=1, scale > 0".into()); }
+                fovea.push(FoveaParams { center, radius, scale });
+            }
+            continue;
+        }
+        if key == "layers" {
+            layers = RetinaLayers::default();
+            for layer in value.split(',') {
+                match layer { "depth" => layers.depth = true, "normal" => layers.normal = true, "entity-id" | "entity_id" => layers.entity_id = true, "material-id" | "material_id" => layers.material_id = true, "world-pos" | "world_pos" => layers.world_pos = true, "motion" => return Err("motion is UNVERIFIED: no previous-frame plumbing".into()), other => return Err(format!("unknown retina layer {other:?}")) }
+            }
+            continue;
+        }
+        if key == "w" || key == "h" {
+            let dimension = value
+                .parse::<u32>()
+                .ok()
+                .filter(|dimension| *dimension > 0)
+                .ok_or_else(|| format!("{key} must be a positive integer, got {value:?}"))?;
+            if key == "w" { width = dimension; } else { height = dimension; }
+            continue;
+        }
+        let one = parse_scry_query(pair)?;
+        if one.pos.is_some() { pose.pos = one.pos; }
+        if one.yaw.is_some() { pose.yaw = one.yaw; }
+        if one.pitch.is_some() { pose.pitch = one.pitch; }
+        if one.fov.is_some() { pose.fov = one.fov; }
+    }
+    Ok(RetinaParams { pose, width, height, layers, fovea })
+}
+
+fn parse_finite_f32(value: &str, name: &str) -> Result<f32, String> {
+    let parsed: f32 = value
+        .parse()
+        .map_err(|_| format!("{name} must be a number, got {value:?}"))?;
+    if parsed.is_finite() {
+        Ok(parsed)
+    } else {
+        Err(format!("{name} must be finite, got {value:?}"))
+    }
+}
+
+fn parse_scry_query(query: &str) -> Result<ScryParams, String> {
+    let mut params = ScryParams::default();
+    for pair in query.split('&').filter(|segment| !segment.is_empty()) {
+        let (key, value) = pair
+            .split_once('=')
+            .ok_or_else(|| format!("query segment {pair:?} must be key=value"))?;
+        match key {
+            "pos" => {
+                let coords: Vec<&str> = value.split(',').collect();
+                if coords.len() != 3 {
+                    return Err(format!("pos must be x,y,z, got {value:?}"));
+                }
+                params.pos = Some([
+                    parse_finite_f32(coords[0], "pos.x")?,
+                    parse_finite_f32(coords[1], "pos.y")?,
+                    parse_finite_f32(coords[2], "pos.z")?,
+                ]);
+            }
+            "yaw" => params.yaw = Some(parse_finite_f32(value, "yaw")?),
+            "pitch" => params.pitch = Some(parse_finite_f32(value, "pitch")?),
+            "fov" => params.fov = Some(parse_finite_f32(value, "fov")?),
+            "lab" => match value.trim().to_ascii_lowercase().as_str() {
+                "teacher-benchmark" => params.teacher_benchmark = true,
+                other => {
+                    return Err(format!("lab must be teacher-benchmark, got {other:?}"));
+                }
+            },
+            "resolve" => {
+                params.resolve = Some(match value.trim().to_ascii_lowercase().as_str() {
+                    "bilinear" => 0,
+                    "nearest" => 1,
+                    "neural" => 2,
+                    other => {
+                        return Err(format!(
+                            "resolve must be bilinear, nearest, or neural, got {other:?}"
+                        ));
+                    }
+                });
+            }
+            "w" => {
+                params.width = Some(
+                    value
+                        .parse::<u32>()
+                        .ok()
+                        .filter(|width| *width > 0)
+                        .ok_or_else(|| format!("w must be a positive integer, got {value:?}"))?,
+                )
+            }
+            "h" => {
+                params.height = Some(
+                    value
+                        .parse::<u32>()
+                        .ok()
+                        .filter(|height| *height > 0)
+                        .ok_or_else(|| format!("h must be a positive integer, got {value:?}"))?,
+                )
+            }
+            "eye" => match value.trim().to_ascii_lowercase().as_str() {
+                "presented" | "present" => params.belief = false,
+                "belief" => params.belief = true,
+                other => {
+                    return Err(format!("eye must be presented or belief, got {other:?}"));
+                }
+            },
+            other => return Err(format!("unknown scry parameter {other:?}")),
+        }
+    }
+    Ok(params)
+}
+
+struct RuntimeState {
+    running: Arc<AtomicBool>,
+}
+
+#[tauri::command]
+fn panel_pressed() {
+    eprintln!("[ipc] transparent overlay button -> Rust command");
+}
+
+#[cfg(target_os = "macos")]
+fn install_passthrough_monitor(
+    window: tauri::Window,
+    config: ScryingGlassConfig,
+) -> Result<(), String> {
+    use block2::RcBlock;
+    use objc2_app_kit::{NSEvent, NSEventMask};
+
+    let click_window = window.clone();
+    let block = RcBlock::new(move |event: std::ptr::NonNull<NSEvent>| -> *mut NSEvent {
+        let event = unsafe { event.as_ref() };
+        let point = event.locationInWindow();
+        if let Ok(size) = click_window.inner_size()
+            && !config.is_panel_point(point.x, point.y, size)
+        {
+            eprintln!(
+                "[wgpu-input] passthrough click x={:.1} y={:.1}",
+                point.x, point.y
+            );
+        }
+        event as *const NSEvent as *mut NSEvent
+    });
+    let monitor = unsafe {
+        NSEvent::addLocalMonitorForEventsMatchingMask_handler(NSEventMask::LeftMouseDown, &block)
+    }
+    .ok_or_else(|| "failed to install macOS local mouse monitor".to_string())?;
+    Box::leak(Box::new(monitor));
+    Ok(())
+}
+
+#[cfg(not(target_os = "macos"))]
+fn install_passthrough_monitor(
+    _window: tauri::Window,
+    _config: ScryingGlassConfig,
+) -> Result<(), String> {
+    Err("this package's physical native click monitor is macOS-only".into())
+}
+
+fn main() {
+    let config = ScryingGlassConfig::from_env()
+        .unwrap_or_else(|error| panic!("invalid scrying-glass config: {error}"));
+    let render_interval = config.frame_interval();
+    let native_port = config.native_port;
+    let mut core = Core::default();
+    ScryingGlassPackage.register(&mut core);
+    eprintln!(
+        "[package] {} v{} registered",
+        core.package("scrying-glass").unwrap().name,
+        core.package("scrying-glass").unwrap().version
+    );
+    let world_core = WorldCore::open(&config.world_path, config.world_core.clone())
+        .unwrap_or_else(|error| panic!("open GAIA_WORLD {}: {error}", config.world_path.display()));
+    world_core
+        .materialize_into(&mut core.world)
+        .unwrap_or_else(|error| panic!("materialize crystal authority: {error}"));
+    let scene_names: Vec<String> = world_core
+        .realm()
+        .scene_names()
+        .map(str::to_owned)
+        .collect();
+    let entity_count = world_core.realm().authored_entity_count();
+    let chain_start = Instant::now();
+    let render_scene = RenderScene::from_ecs(std::mem::take(&mut core.world), &config.scene)
+        .unwrap_or_else(|error| panic!("materialize GAIA world render: {error}"));
+    let chain_millis = chain_start.elapsed().as_secs_f64() * 1e3;
+    let cluster_count: usize = render_scene
+        .chains
+        .iter()
+        .map(|chain| chain.dag.clusters.len())
+        .sum();
+    // Load budget: time to transmute the whole realm into the Great Chain
+    // (printed, never gated — Rite III ordeal item 5).
+    eprintln!(
+        "[world] {} scene(s)={:?} entities={} chains={} clusters={} transmute={chain_millis:.1}ms",
+        config.world_path.display(),
+        scene_names,
+        entity_count,
+        render_scene.chains.len(),
+        cluster_count,
+    );
+
+    // WINDOW-BAN OFFSCREEN mode: no NSWindow, no tauri/winit surface. Build the
+    // renderer headless, serve /scry over HTTP off the offscreen texture, and
+    // drive the render loop on this thread until killed. This is the mandated
+    // proof surface — measurement runs never open a window on the desktop.
+    if config.offscreen {
+        run_offscreen(config, render_scene);
+    }
+
+    tauri::Builder::default()
+        .invoke_handler(tauri::generate_handler![panel_pressed])
+        .setup(move |app| {
+            let window = tauri::window::WindowBuilder::new(app, "wgpu-surface")
+                .title(config.title.clone())
+                .inner_size(config.window_width, config.window_height)
+                // Nekromant case #1 fix: `focused(false)` skips the initial
+                // makeKeyAndOrderFront (window shows via orderFront only, never
+                // key at creation); `focusable(false)` rides tao's
+                // canBecomeKeyWindow/canBecomeMainWindow override down to a
+                // permanent `false` (packages/scrying-glass Cargo.toml pins
+                // tauri 2.11.5 -> tao 0.35.3; see
+                // tao-0.35.3/src/platform_impl/macos/window.rs WINDOW_CLASS) —
+                // no NSWindow subclass of our own needed, no keystroke
+                // (including Cmd+Q) can ever land on this window again,
+                // however hard a GPU-load activation storm hits the app.
+                .focused(!config.worker_window)
+                .focusable(!config.worker_window)
+                .build()?;
+            if config.worker_window {
+                eprintln!(
+                    "[worker-window] GAIA_NATIVE_WORKER_WINDOW=true: window built focused=false \
+                     focusable=false (never-key) title={:?}",
+                    config.title
+                );
+            }
+            let size = window.inner_size()?;
+            let (position, panel_size) = config.panel_layout(size);
+            let auto_test_ipc = config.auto_test_ipc;
+            let overlay = tauri::webview::WebviewBuilder::new(
+                "overlay-panel",
+                WebviewUrl::App("index.html".into()),
+            )
+            .transparent(true)
+            .on_page_load(move |webview, payload| {
+                if auto_test_ipc
+                    && matches!(payload.event(), tauri::webview::PageLoadEvent::Finished)
+                {
+                    let _ = webview.eval("document.querySelector('#ipc')?.click()");
+                }
+            });
+            let overlay = window.add_child(overlay, position, panel_size)?;
+            let resize_overlay = overlay.clone();
+            let resize_config = config.clone();
+            window.on_window_event(move |event| {
+                match event {
+                    tauri::WindowEvent::Resized(size) => {
+                        let (position, panel_size) = resize_config.panel_layout(*size);
+                        let _ = resize_overlay.set_position(position);
+                        let _ = resize_overlay.set_size(panel_size);
+                    }
+                    // ALWAYS-ON instrumentation (both worker_window modes): every
+                    // future quit-by-stolen-focus now has a named sender — a
+                    // wall-clock-stamped log line for the exact moment this
+                    // window gained/lost key status.
+                    tauri::WindowEvent::Focused(focused) => {
+                        let stamp_ms = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .map(|d| d.as_millis())
+                            .unwrap_or(0);
+                        eprintln!(
+                            "[focus] t={stamp_ms}ms window=\"wgpu-surface\" focused={focused} \
+                             worker_window={}",
+                            resize_config.worker_window
+                        );
+                    }
+                    _ => {}
+                }
+            });
+            install_passthrough_monitor(window.clone(), config.clone())
+                .map_err(std::io::Error::other)?;
+
+            let latest = Arc::new(RwLock::new(None));
+            let capture_sender = spawn_capture_worker(latest.clone());
+
+            // The Embodiment: the world's own leaf triangles become the floor
+            // (exact geometry, view-independent — never a camera's coarse cut),
+            // and the world spawn pose becomes a walking body. IRON SWEEP:
+            // floor cutoff / probe count / column epsilon are `PlayerParams`
+            // fields (env-overridable), so `player_params` is read before the
+            // floor set is built and threaded through explicitly — defaults
+            // reproduce the old `Ground::from_positions` behavior exactly.
+            let player_params = PlayerParams::from_env().map_err(std::io::Error::other)?;
+            let ground = Arc::new(Ground::from_positions_with_params(
+                &render_scene.leaf_positions(),
+                &player_params,
+            ));
+            // The spawn eye pose defaults to the world's own spawn component; each
+            // axis + yaw may be overridden by an explicit env param so the window
+            // the Architect opens faces the realm (item 4 vantage). No frozen
+            // world edit — the override is window-local and param-driven (unset =
+            // the world spawn, unchanged). The body still FALLS to the floor from
+            // whatever eye Y is given, so a spawn point on the plaza reads naruko
+            // (lighthouse/pier/city) instead of the occluded default corner.
+            let spawn_axis = |name: &str, world: f32| -> Result<f32, String> {
+                match std::env::var(name) {
+                    Ok(value) => value
+                        .parse::<f32>()
+                        .map_err(|_| format!("{name} must be a number, got {value:?}"))
+                        .and_then(|parsed| {
+                            if parsed.is_finite() {
+                                Ok(parsed)
+                            } else {
+                                Err(format!("{name} must be finite, got {value:?}"))
+                            }
+                        }),
+                    Err(_) => Ok(world),
+                }
+            };
+            let world_eye = render_scene.camera.eye;
+            let spawn_eye = Vec3::new(
+                spawn_axis("GAIA_NATIVE_SPAWN_X", world_eye.x).map_err(std::io::Error::other)?,
+                spawn_axis("GAIA_NATIVE_SPAWN_Y", world_eye.y).map_err(std::io::Error::other)?,
+                spawn_axis("GAIA_NATIVE_SPAWN_Z", world_eye.z).map_err(std::io::Error::other)?,
+            );
+            let spawn_yaw =
+                spawn_axis("GAIA_NATIVE_SPAWN_YAW", render_scene.camera.yaw)
+                    .map_err(std::io::Error::other)?;
+            let player = Arc::new(Mutex::new(Player::new(
+                player_params,
+                spawn_eye,
+                spawn_yaw,
+            )));
+            let tick_dt = (1.0 / config.fps) as f32;
+            eprintln!(
+                "[embodiment] spawn eye={spawn_eye:?} yaw={spawn_yaw} floor_triangles={} tick_dt={tick_dt}",
+                ground.triangle_count()
+            );
+            input::install_player_input(player.clone()).map_err(std::io::Error::other)?;
+
+            let renderer = Renderer::new(
+                Some(&window),
+                (config.window_width as u32, config.window_height as u32),
+                capture_sender,
+                render_scene,
+                config.integrator,
+                &config.bvh,
+                config.refit,
+                config.capture_frames,
+                config.draw_own_body,
+                config.temporal_enabled,
+                config.temporal,
+                config.native_canvas_width,
+                config.native_canvas_height,
+                config.net_present,
+            )
+            .map_err(std::io::Error::other)?;
+            // DAS BLUTBÄNDIGEN — B0 DATA DOOR. Seed the live bend state from the
+            // boot scene bytes and, when the master switch is on, spawn the
+            // mtime file-watch (law 1: polling, no new crate). The receiver is
+            // drained on the render thread, which owns the device + scene.
+            let bloodbend_params = BloodbendParams::from_env(&config.world_path)
+                .map_err(std::io::Error::other)?;
+            let bend_rx = if bloodbend_params.enabled {
+                Some(bloodbend::spawn_watcher(&bloodbend_params))
+            } else {
+                eprintln!("[bloodbend] master switch GAIA_NATIVE_BLOODBEND=false — data door closed");
+                None
+            };
+            let bloodbend_state = bloodbend_params.enabled.then(|| {
+                Bloodbend::seed(
+                    bloodbend_params.clone(),
+                    config.world_path.clone(),
+                    config.scene.clone(),
+                )
+            });
+            {
+                // MEASURE: print fixed God's-canvas trace cost.
+                let mut renderer = renderer;
+                renderer.bloodbend = bloodbend_state;
+                let (median, mean) = renderer.measure_trace_ms(60);
+                eprintln!(
+                    "[frame] trace {}x{} God's canvas: median {median:.2}ms mean {mean:.2}ms/frame (spp={}, 60-frame sample)",
+                    renderer.canvas_width,
+                    renderer.canvas_height,
+                    config.integrator.spp,
+                );
+                let renderer_moved = renderer;
+                let (scry_tx, scry_rx) = mpsc::channel::<RenderRequest>();
+                let (world_tx, world_rx) = mpsc::channel::<WorldRequest>();
+                let debug: DebugCell = Arc::new(RwLock::new(DebugSnapshot::default()));
+                // V7-LIVE LANE PERF ROOM 7: unused in the windowed loop (the
+                // CSV dump is only wired into the offscreen bench path this
+                // room — NO windows per instruction); field still required to
+                // construct `HttpContext`.
+                let frame_csv_flush = Arc::new(AtomicBool::new(false));
+                start_screenshot_server(
+                    native_port,
+                    HttpContext {
+                        latest,
+                        scry: scry_tx,
+                        world: world_tx,
+                        authority_timeout: config.authority_timeout,
+                        event_default_limit: config.event_default_limit,
+                        event_limit_max: config.event_limit_max,
+                        max_request_bytes: config.max_request_bytes,
+                        player: player.clone(),
+                        ground: ground.clone(),
+                        tick_dt,
+                        debug: debug.clone(),
+                        frame_csv_flush,
+                    },
+                )
+                .map_err(std::io::Error::other)?;
+                let running = Arc::new(AtomicBool::new(true));
+                app.manage(RuntimeState {
+                    running: running.clone(),
+                });
+                let render_player = player.clone();
+                let render_ground = ground.clone();
+                let hud_overlay = overlay.clone();
+                let hud_enabled = config.hud_enabled;
+                let hud_window = config.hud_window;
+                let authority_scene_params = config.scene.clone();
+                thread::Builder::new()
+                    .name("gaia-render".into())
+                    .spawn(move || {
+                        let mut renderer = renderer_moved;
+                        let mut world_core = world_core;
+                        run_render_loop(
+                            &mut renderer,
+                            &mut world_core,
+                            &authority_scene_params,
+                            &world_rx,
+                            &window,
+                            &render_player,
+                            &render_ground,
+                            tick_dt,
+                            render_interval,
+                            &scry_rx,
+                            bend_rx.as_ref(),
+                            &running,
+                            &hud_overlay,
+                            hud_enabled,
+                            hud_window,
+                            &debug,
+                        );
+                    })
+                    .map_err(std::io::Error::other)?;
+            }
+            eprintln!(
+                "[scrying-glass] child webview overlay created; render, capture, PNG, and HTTP run off the main thread"
+            );
+            Ok(())
+        })
+        .build(tauri::generate_context!())
+        .expect("Tauri app build failed")
+        .run(|app, event| {
+            match event {
+                tauri::RunEvent::Exit => {
+                    app.state::<RuntimeState>()
+                        .running
+                        .store(false, Ordering::Release);
+                }
+                // ALWAYS-ON instrumentation: applicationShouldHandleReopen is
+                // the app-activation signal Tauri's RunEvent exposes on macOS
+                // (dock-icon/Cmd+Tab reactivation) — the closest named sender
+                // to "setApplicationIsActive" the public API surfaces (proven
+                // seam: tauri-2.11.5/src/app.rs RunEvent::Reopen). Per-window
+                // key/focus transitions are logged in the window's own
+                // on_window_event above (Focused).
+                #[cfg(target_os = "macos")]
+                tauri::RunEvent::Reopen { has_visible_windows, .. } => {
+                    let stamp_ms = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_millis())
+                        .unwrap_or(0);
+                    eprintln!(
+                        "[activation] t={stamp_ms}ms event=Reopen has_visible_windows={has_visible_windows}"
+                    );
+                }
+                _ => {}
+            }
+        });
+}
+
+/// WINDOW-BAN OFFSCREEN driver: no NSWindow, no tauri/winit. Builds a
+/// surface-less renderer, serves `/scry` (+ the S12.5 door) off the offscreen
+/// texture, and runs the render loop on this thread until the process is
+/// killed. The mandated proof surface for measurement runs.
+fn run_offscreen(config: ScryingGlassConfig, render_scene: RenderScene) -> ! {
+    let native_port = config.native_port;
+    let render_interval = config.frame_interval();
+    let tick_dt = (1.0 / config.fps) as f32;
+    let dims = (config.window_width as u32, config.window_height as u32);
+
+    let ground = Arc::new(Ground::from_positions(&render_scene.leaf_positions()));
+    let spawn_axis = |name: &str, world: f32| -> f32 {
+        std::env::var(name)
+            .ok()
+            .and_then(|v| v.parse::<f32>().ok())
+            .filter(|p| p.is_finite())
+            .unwrap_or(world)
+    };
+    let world_eye = render_scene.camera.eye;
+    let spawn_eye = Vec3::new(
+        spawn_axis("GAIA_NATIVE_SPAWN_X", world_eye.x),
+        spawn_axis("GAIA_NATIVE_SPAWN_Y", world_eye.y),
+        spawn_axis("GAIA_NATIVE_SPAWN_Z", world_eye.z),
+    );
+    let spawn_yaw = spawn_axis("GAIA_NATIVE_SPAWN_YAW", render_scene.camera.yaw);
+    let player_params =
+        PlayerParams::from_env().unwrap_or_else(|e| panic!("offscreen player params: {e}"));
+    let player = Arc::new(Mutex::new(Player::new(player_params, spawn_eye, spawn_yaw)));
+    eprintln!(
+        "[embodiment] spawn eye={spawn_eye:?} yaw={spawn_yaw} floor_triangles={} tick_dt={tick_dt}",
+        ground.triangle_count()
+    );
+
+    let latest: LatestFrame = Arc::new(RwLock::new(None));
+    let capture_sender = spawn_capture_worker(latest.clone());
+    let mut renderer = Renderer::new(
+        None,
+        dims,
+        capture_sender,
+        render_scene,
+        config.integrator,
+        &config.bvh,
+        config.refit,
+        config.capture_frames,
+        config.draw_own_body,
+        config.temporal_enabled,
+        config.temporal,
+        config.native_canvas_width,
+        config.native_canvas_height,
+        config.net_present,
+    )
+    .unwrap_or_else(|e| panic!("offscreen renderer: {e}"));
+
+    let (median, mean) = renderer.measure_trace_ms(60);
+    eprintln!(
+        "[frame] trace {}x{} → offscreen {}x{}: median {median:.2}ms mean {mean:.2}ms/frame (spp={}, 60-frame sample)",
+        renderer.canvas_width, renderer.canvas_height, dims.0, dims.1, config.integrator.spp,
+    );
+
+    let (scry_tx, scry_rx) = mpsc::channel::<RenderRequest>();
+    // WINDOW-BAN offscreen is a headless measurement/proof surface: it serves
+    // /scry but not live world ops. The channel exists only to satisfy
+    // HttpContext (so /world endpoints don't 500) — world_rx is intentionally
+    // never drained here, matching this mode's original (pre-remap) scope.
+    let (world_tx, _world_rx) = mpsc::channel::<WorldRequest>();
+    let debug: DebugCell = Arc::new(RwLock::new(DebugSnapshot::default()));
+    // V7-LIVE LANE PERF ROOM 7: `/frame_csv` shutdown-flush trigger.
+    let frame_csv_flush = Arc::new(AtomicBool::new(false));
+    start_screenshot_server(
+        native_port,
+        HttpContext {
+            latest,
+            scry: scry_tx,
+            world: world_tx,
+            authority_timeout: config.authority_timeout,
+            event_default_limit: config.event_default_limit,
+            event_limit_max: config.event_limit_max,
+            max_request_bytes: config.max_request_bytes,
+            player: player.clone(),
+            ground: ground.clone(),
+            tick_dt,
+            debug: debug.clone(),
+            frame_csv_flush: frame_csv_flush.clone(),
+        },
+    )
+    .unwrap_or_else(|e| panic!("offscreen http server: {e}"));
+    eprintln!(
+        "[offscreen] GAIA_NATIVE_OFFSCREEN=true: NO NSWindow — rendering to offscreen {}x{}; \
+         /scry (?eye=belief|presented), /budget, /state on http://127.0.0.1:{native_port}",
+        dims.0, dims.1,
+    );
+
+    let size = PhysicalSize { width: dims.0.max(1), height: dims.1.max(1) };
+    let mut deadline = Instant::now();
+    let mut pending: Option<wgpu::SubmissionIndex> = None;
+    // N0.j S13.3 OVERLAP THE REAL WORK — TRIED, MEASURED, DOES NOT HELP.
+    // The ~7 ms world advance (skin·tick·splice + fresh BVH upload) is the
+    // dominant OUTSIDE-work thief. The intent was to advance the NEXT frame's
+    // world AFTER this frame's GPU submit so its CPU cost hides under the
+    // in-flight GPU trace. But `trace` is SYNCHRONOUS on the render thread (it
+    // submits+POLLS the GPU for the AOV that feeds the gather), so by the time
+    // the deferred advance runs the GPU is already idle — nothing to hide under.
+    // A/B measured it neutral-to-slightly-worse (47.5 vs 48.4 fps) AND it costs
+    // one frame of world-state latency, so SERIAL is the default. The overlap
+    // path stays behind `GAIA_NATIVE_WORLD_OVERLAP=1` for the record (it becomes
+    // a real win only once trace stops blocking the render thread — the net
+    // pipeline's next charter). `update_bvh` allocs FRESH buffers each tick and
+    // the in-flight submission retains its own, so the overlap order is SAFE.
+    let world_overlap = matches!(
+        std::env::var("GAIA_NATIVE_WORLD_OVERLAP").as_deref(),
+        Ok("1" | "true")
+    );
+    // Closure-free helper (borrow rules): advance one frame's world, timed.
+    macro_rules! advance_timed {
+        () => {{
+            let t_world = Instant::now();
+            let mut body_speed = 0.0f32;
+            let mut walker_pose = None;
+            if let Ok(mut body) = player.lock() {
+                body.step(tick_dt, &ground);
+                let pose = body.pose();
+                body_speed = body.velocity.length();
+                walker_pose = Some(WalkerPose { position: pose.position, yaw: pose.yaw });
+                drop(body);
+                renderer.set_view_pose(pose.position, pose.yaw, pose.pitch);
+            }
+            renderer.advance_world(body_speed, walker_pose, &[]);
+            t_world.elapsed().as_secs_f64() * 1000.0
+        }};
+    }
+    loop {
+        let _ = renderer.device.poll(wgpu::PollType::Poll);
+        let t_http = Instant::now();
+        while let Ok(request) = scry_rx.try_recv() {
+            match request {
+                RenderRequest::Scry(request) => {
+                    let frame = if request.params.belief {
+                        #[cfg(target_os = "macos")]
+                        {
+                            renderer.capture_belief()
+                        }
+                        #[cfg(not(target_os = "macos"))]
+                        {
+                            Err("belief eye is macOS-only".to_string())
+                        }
+                    } else if request.params.presented {
+                        // N0.j S13.2 on-demand readback of the current offscreen frame.
+                        renderer.capture_presented()
+                    } else {
+                        renderer.capture_pose(&request.params)
+                    };
+                    let _ = request.reply.send(frame);
+                }
+                RenderRequest::Retina { params, reply } => {
+                    let _ = reply.send(renderer.capture_retina(&params));
+                }
+            }
+        }
+        let mut http_ms = t_http.elapsed().as_secs_f64() * 1000.0;
+        // N0.j S13 THE OUTSIDE-9ms HUNT: time the non-net frame-loop segments.
+        let t_iter = Instant::now();
+        // SERIAL mode: advance BEFORE render (the old order).
+        let mut world_ms = if world_overlap { 0.0 } else { advance_timed!() };
+        let idx = renderer.render(size);
+        // OVERLAP mode: advance the NEXT frame's world while THIS frame's GPU
+        // flies (before waiting the previous frame below).
+        if world_overlap {
+            world_ms = advance_timed!();
+        }
+        if let Some(prev) = pending.take() {
+            let _ = renderer.device.poll(wgpu::PollType::Wait {
+                submission_index: Some(prev),
+                timeout: None,
+            });
+        }
+        pending = idx;
+        let t_debug = Instant::now();
+        if let Ok(mut d) = debug.write() {
+            d.budget = renderer.debug_budget_json();
+            d.state = renderer.debug_state_json();
+        }
+        // V7-LIVE LANE PERF ROOM 7: shutdown-flush hook — checked once per
+        // iteration (one atomic load, no cost when never requested).
+        if frame_csv_flush.swap(false, Ordering::AcqRel) {
+            renderer.flush_frame_csv();
+        }
+        http_ms += t_debug.elapsed().as_secs_f64() * 1000.0;
+        // Record the outside-work AFTER render set `last_readback_ms` this frame.
+        let readback_ms = renderer.last_readback_ms;
+        let loop_total_ms = t_iter.elapsed().as_secs_f64() * 1000.0;
+        renderer
+            .outside
+            .record(world_ms, readback_ms, http_ms, loop_total_ms);
+        let stages = renderer.last_world_stages;
+        renderer.outside.record_world(stages);
+        deadline += render_interval;
+        let now = Instant::now();
+        if deadline > now {
+            thread::sleep(deadline - now);
+        } else {
+            deadline = now;
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn run_render_loop(
+    renderer: &mut Renderer,
+    world_core: &mut WorldCore,
+    authority_scene_params: &SceneParameters,
+    world_rx: &mpsc::Receiver<WorldRequest>,
+    window: &tauri::Window,
+    render_player: &Arc<Mutex<Player>>,
+    render_ground: &Arc<Ground>,
+    tick_dt: f32,
+    render_interval: Duration,
+    scry_rx: &mpsc::Receiver<RenderRequest>,
+    bend_rx: Option<&mpsc::Receiver<Bend>>,
+    running: &Arc<AtomicBool>,
+    hud_overlay: &tauri::webview::Webview<tauri::Wry>,
+    hud_enabled: bool,
+    hud_window: usize,
+    debug: &DebugCell,
+) {
+    let mut deadline = Instant::now();
+    // FPS COUNTER BURST — the REAL frame clock: the same std::time::Instant
+    // style measure_trace_ms uses at startup, applied per delivered frame
+    // (measured after present, i.e. across the Fifo vsync wait too — this is
+    // the cadence the Architect's eyes actually see). Never a second timer:
+    // the overlay DOM only renders numbers Rust pushes it, no JS rAF loop.
+    let mut last_tick = Instant::now();
+    let mut frame_times: std::collections::VecDeque<f64> =
+        std::collections::VecDeque::with_capacity(hud_window.max(1));
+    let mut hud_logged = 0u32;
+    // Steady-state HUD sampling to stderr: default logs only the first 5 frames
+    // (warm-up), but GAIA_NATIVE_HUD_LOG=<N> also logs every N-th delivered
+    // frame — the honest way to read the LIVE frame clock at a settled vista
+    // (LEVER 2 before/after) without a webview readback API.
+    let hud_log_every: u32 = std::env::var("GAIA_NATIVE_HUD_LOG")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0);
+    let mut hud_frame = 0u32;
+    // LEVER 2 — CPU/GPU overlap: the PREVIOUS frame's GPU submission, completed
+    // only after THIS frame's CPU stages (body.step + advance_world) have run,
+    // so frame N+1's skin/tick/splice/upload overlap frame N's trace. Proven
+    // bit-identical to serial by `live_loop_hash_identity` (mirrors perf_audit's
+    // ATOM B FNV hash-identity). Carried across iterations; drained on exit.
+    let mut pending: Option<wgpu::SubmissionIndex> = None;
+    while running.load(Ordering::Acquire) {
+        // Service the map callbacks of the frame completed last iteration
+        // (non-blocking) — keeps the /scry capture ring draining.
+        let _ = renderer.device.poll(wgpu::PollType::Poll);
+        // Incantations apply + journal on the render owner, then rebuild the
+        // derived scene before HTTP receives success.
+        while let Ok(request) = world_rx.try_recv() {
+            match request {
+                WorldRequest::Apply { batch, reply } => {
+                    let result = world_core.apply(batch).and_then(|report| {
+                        let rebuild = report.applied.iter().any(|op| match op {
+                            Op::Set(_) => true,
+                            Op::Other { op, .. } => {
+                                matches!(op.as_str(), "spawn" | "despawn" | "clear")
+                            }
+                            _ => false,
+                        });
+                        if rebuild {
+                            renderer.rebuild_world_core(world_core, authority_scene_params)?;
+                        }
+                        eprintln!(
+                            "[world-core] entropy={} latest={} applied={} Steiner frames={}",
+                            report.entropy,
+                            report.latest,
+                            report.applied.len(),
+                            world_core.journal_frame_count().unwrap_or(0),
+                        );
+                        Ok(report)
+                    });
+                    let _ = reply.send(result);
+                }
+                WorldRequest::Snapshot { reply } => {
+                    let _ = reply.send(world_core.snapshot_json());
+                }
+                WorldRequest::Events {
+                    since,
+                    limit,
+                    reply,
+                } => {
+                    let _ = reply.send(world_core.events_json(since, limit));
+                }
+            }
+        }
+        // Service moving-eye requests off the frame loop's hot path.
+        // /scry's wait_indefinitely also completes `pending` — each scry
+        // momentarily collapses the overlap; harmless (verification organ).
+        while let Ok(request) = scry_rx.try_recv() {
+            match request {
+                RenderRequest::Scry(request) => {
+                    let frame = if request.params.belief {
+                        #[cfg(target_os = "macos")]
+                        {
+                            renderer.capture_belief()
+                        }
+                        #[cfg(not(target_os = "macos"))]
+                        {
+                            Err("belief eye is macOS-only".to_string())
+                        }
+                    } else if request.params.presented {
+                        // N0.j S13.2 on-demand readback of the current offscreen frame.
+                        renderer.capture_presented()
+                    } else {
+                        renderer.capture_pose(&request.params)
+                    };
+                    let _ = request.reply.send(frame);
+                }
+                RenderRequest::Retina { params, reply } => { let _ = reply.send(renderer.capture_retina(&params)); }
+            }
+        }
+        // DAS BLUTBÄNDIGEN — drain the file-watch. Coalesce a burst of mtime
+        // bumps into ONE apply per surface this frame (an editor may touch a
+        // file several times); scene rebuild + shader recompile both run here on
+        // the render thread that owns the device.
+        if let Some(bend_rx) = bend_rx {
+            let (mut scene_dirty, mut shader_dirty) = (false, false);
+            while let Ok(bend) = bend_rx.try_recv() {
+                match bend {
+                    Bend::Scene => scene_dirty = true,
+                    Bend::Shader => shader_dirty = true,
+                }
+            }
+            if scene_dirty {
+                renderer.bend_scene();
+            }
+            if shader_dirty {
+                renderer.bend_shader();
+            }
+        }
+        // Step the body one fixed tick and aim the window camera at its eye.
+        let mut body_speed = 0.0f32;
+        let mut walker_pose = None;
+        // PLAYGROUND — the pushed view ray this tick, taken (edge-fired) from
+        // the shared player: F key, a pointer-locked click, or the /push organ
+        // all set `push_pending`; we consume it here and cast the ray below.
+        let mut push_ray: Option<(Vec3, f32, f32)> = None;
+        if let Ok(mut body) = render_player.lock() {
+            body.step(tick_dt, render_ground);
+            let pose = body.pose();
+            body_speed = body.velocity.length();
+            if body.push_pending {
+                body.push_pending = false;
+                push_ray = Some((pose.position, pose.yaw, pose.pitch));
+            }
+            walker_pose = Some(WalkerPose {
+                position: pose.position,
+                yaw: pose.yaw,
+            });
+            drop(body);
+            renderer.set_view_pose(pose.position, pose.yaw, pose.pitch);
+        }
+        let push_ops = match push_ray {
+            Some((eye, yaw, pitch)) => renderer.build_push_ops(eye, yaw, pitch),
+            None => Vec::new(),
+        };
+        renderer.advance_world(body_speed, walker_pose, &push_ops);
+        // Submit THIS frame's GPU work WITHOUT waiting. Its trace now runs on
+        // the GPU while the NEXT iteration's CPU stages execute above.
+        if let Ok(size) = window.inner_size() {
+            let idx = renderer.render(size);
+            // Complete the PREVIOUS frame — its GPU work has been overlapping
+            // THIS frame's CPU stages since last iteration's submit. Explicit
+            // per-submission Wait (not wait_indefinitely, which would also block
+            // on the frame just submitted and collapse the overlap).
+            if let Some(prev) = pending.take() {
+                let _ = renderer.device.poll(wgpu::PollType::Wait {
+                    submission_index: Some(prev),
+                    timeout: None,
+                });
+            }
+            pending = idx;
+        }
+        // S12.5 AI DEBUG DOOR: refresh the /budget + /state JSON (cheap strings).
+        if let Ok(mut d) = debug.write() {
+            d.budget = renderer.debug_budget_json();
+            d.state = renderer.debug_state_json();
+        }
+        deadline += render_interval;
+        let now = Instant::now();
+        if deadline > now {
+            thread::sleep(deadline - now);
+        } else {
+            deadline = now;
+        }
+
+        if hud_enabled {
+            let tick_now = Instant::now();
+            let frame_ms = tick_now.duration_since(last_tick).as_secs_f64() * 1e3;
+            last_tick = tick_now;
+            frame_times.push_back(frame_ms);
+            if frame_times.len() > hud_window.max(1) {
+                frame_times.pop_front();
+            }
+            // HUD shows DELIVERED cadence (incl. vsync/pacing) — render-cost
+            // instruments are GAIA_NATIVE_HUD_LOG + live_loop_audit.
+            let mut sorted: Vec<f64> = frame_times.iter().copied().collect();
+            sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            let median_ms = sorted[sorted.len() / 2];
+            let fps = if median_ms > 0.0 {
+                1000.0 / median_ms
+            } else {
+                0.0
+            };
+            let payload = format!("window.__gaiaHud && window.__gaiaHud({fps:.1},{median_ms:.2})");
+            let _ = hud_overlay.eval(payload.clone());
+            hud_frame += 1;
+            if hud_logged < 5 {
+                eprintln!("[hud] {payload}");
+                hud_logged += 1;
+            } else if hud_log_every > 0 && hud_frame % hud_log_every == 0 {
+                eprintln!("[hud] frame {hud_frame} {payload}");
+            }
+        }
+    }
+    // Drain the last in-flight frame before the render thread returns.
+    if let Some(prev) = pending.take() {
+        let _ = renderer.device.poll(wgpu::PollType::Wait {
+            submission_index: Some(prev),
+            timeout: None,
+        });
+    }
+}
