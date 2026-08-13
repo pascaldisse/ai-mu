@@ -1,0 +1,13 @@
+    Finished `release` profile [optimized] target(s) in 0.21s
+     Running `/Users/pascaldisse/projects/magic-crystal-v9body/target/release/examples/rdirect_train_v9j`
+[v9j] GAIA_V7_SKY_HISTORY reject=true — mandate expects true (set GAIA_V7_SKY_HISTORY=reject)
+[v9j] res 128x72 K=3 steps, GAIA_V9_K=8 noise2noise draws (variance/8, teacher validator-only)
+[v9j] WATCHDOG two-signal: score_streak=20 LOG-ONLY, resid_streak=20 ABORT, bar-res probe every 25 epochs at 640x480 (K=3 ref=64) ABORT on sparkle>=16
+[v9j] CURE 4: overshoot_w=1 — above-ceiling gradient is 2*overshoot_w*(raw-cap)/n (pulls toward the ceiling), no longer zero (see module doc mechanism-hunt verdict)
+[v9j] CURE 5: nohit_albedo_sq=0.00000001 — albedo~0/no-hit pixels bypass the clamp/ceiling entirely, ordinary 2*(raw-target)/n always active (autopsy grad-probe-fix section)
+[v9j] POSE DIVERSITY POOL (v9c/v9e parity): orbit±30deg jitter±0.6 around 2 anchors (front-pivot family x2 draws/epoch, wide-anchor family x1 draw/epoch) + mirror unconditional (fixed) — fresh draws every epoch, CURE 3 winsorize_k=0 (OFF if 0)
+[v9j] rendered mirror(train) + 2 VALIDATOR (orbit_-20, mirror — FIXED, held-out) pose sequences (128x72, teacher 64 VALIDATOR ONLY, pan_step=0.004, mirror_spp=4) in 1.7s
+[v9j] DRY RUN loaded checkpoint "data/rdirect-weights-v9i-last.bin" (652632 bytes) instead of fresh init
+[v9j] DRY RUN sample px=478 step=0 c=0 raw=0.267985 cap=0.230823 target=0.195918 depth=0.000000 BEFORE(CURE4 formula, overshoot anchored to cap)=0.00000269 AFTER(CURE5 formula, anchored to target)=0.00000521
+[v9j] DRY RUN one-batch (K=3 steps of val_seq) mask counts: nohit_px=9813/27648 (35.49%) nohit_effective(is_nohit&&raw>cap, differs-from-CURE4)=193 elem-instances
+[v9j] DRY RUN done — exiting (no training run)
