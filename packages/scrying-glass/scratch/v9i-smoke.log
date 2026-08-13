@@ -1,0 +1,20 @@
+[v9i] GAIA_V7_SKY_HISTORY reject=true — mandate expects true (set GAIA_V7_SKY_HISTORY=reject)
+[v9i] res 128x72 K=3 steps, GAIA_V9_K=8 noise2noise draws (variance/8, teacher validator-only)
+[v9i] WATCHDOG two-signal: score_streak=20 LOG-ONLY, resid_streak=20 ABORT, bar-res probe every 25 epochs at 640x480 (K=3 ref=64) ABORT on sparkle>=16
+[v9i] CURE 4: overshoot_w=1 — above-ceiling gradient is 2*overshoot_w*(raw-cap)/n (pulls toward the ceiling), no longer zero (see module doc mechanism-hunt verdict)
+[v9i] CURE 5: nohit_albedo_sq=0.00000001 — albedo~0/no-hit pixels bypass the clamp/ceiling entirely, ordinary 2*(raw-target)/n always active (autopsy grad-probe-fix section)
+[v9i] POSE DIVERSITY POOL (v9c/v9e parity): orbit±30deg jitter±0.6 around 2 anchors (front-pivot family x2 draws/epoch, wide-anchor family x1 draw/epoch) + mirror unconditional (fixed) — fresh draws every epoch, CURE 3 winsorize_k=0 (OFF if 0)
+[v9i] rendered mirror(train) + 2 VALIDATOR (orbit_-20, mirror — FIXED, held-out) pose sequences (128x72, teacher 64 VALIDATOR ONLY, pan_step=0.004, mirror_spp=4) in 1.2s
+[v9i] UnetConfig widths=[24, 40, 64] n_scales=3 params≈163083
+[v9i] MONITOR epoch -1 (fresh He-init): val sparkle 0.0/Mpx resid 0.1179 highlight_ratio 0.025 score=3.368 | mirror sparkle 0.0/Mpx resid 0.1194 highlight_ratio 0.020 (tgt sp<16 resid<0.035) *BEST->saved score_streak=0/20(LOG-ONLY) resid_streak=0/20(ABORT)
+[v9i] epoch 0/3 n2n_mse=0.143371 lr=0.000100 pool_yaws=[-11.4,9.4,1.9] pool_ms=1153 hist_ms=4896 batch_ms=7975 (14.0s)
+[v9i] MONITOR epoch 0: val sparkle 0.0/Mpx resid 0.1178 highlight_ratio 0.026 score=3.367 | mirror sparkle 0.0/Mpx resid 0.1193 highlight_ratio 0.020 (tgt sp<16 resid<0.035) *BEST->saved score_streak=0/20(LOG-ONLY) resid_streak=0/20(ABORT)
+[v9i] epoch 1/3 n2n_mse=0.096925 lr=0.000075 pool_yaws=[26.6,15.3,11.3] pool_ms=1179 hist_ms=4951 batch_ms=8275 (30.9s)
+[v9i] MONITOR epoch 1: val sparkle 0.0/Mpx resid 0.1177 highlight_ratio 0.026 score=3.364 | mirror sparkle 0.0/Mpx resid 0.1192 highlight_ratio 0.021 (tgt sp<16 resid<0.035) *BEST->saved score_streak=0/20(LOG-ONLY) resid_streak=0/20(ABORT)
+[v9i] epoch 2/3 n2n_mse=0.063050 lr=0.000060 pool_yaws=[-15.3,-29.4,-9.5] pool_ms=1174 hist_ms=4907 batch_ms=8167 (47.6s)
+[v9i] MONITOR epoch 2: val sparkle 0.0/Mpx resid 0.1176 highlight_ratio 0.028 score=3.360 | mirror sparkle 0.0/Mpx resid 0.1189 highlight_ratio 0.023 (tgt sp<16 resid<0.035) *BEST->saved score_streak=0/20(LOG-ONLY) resid_streak=0/20(ABORT)
+[v9i] training completed all 3 epochs without watchdog abort (best score=3.360)
+[v9i] training done in 50.0s (best score=3.360)
+[v9i] wrote /Users/pascaldisse/projects/magic-crystal-v9body/packages/scrying-glass/data/rdirect-weights-v9i.bin sha256=8dbf9806400bdf1d383d60d9a893e2dcb94dd5cfacb0af35a864116b87ff72b7
+[v9i] wrote /Users/pascaldisse/projects/magic-crystal-v9body/packages/scrying-glass/data/rdirect-weights-v9i-last.bin sha256=8dbf9806400bdf1d383d60d9a893e2dcb94dd5cfacb0af35a864116b87ff72b7
+[v9i] wrote provenance. tag=v9i best=/Users/pascaldisse/projects/magic-crystal-v9body/packages/scrying-glass/data/rdirect-weights-v9i.bin last=/Users/pascaldisse/projects/magic-crystal-v9body/packages/scrying-glass/data/rdirect-weights-v9i-last.bin

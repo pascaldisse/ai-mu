@@ -1,0 +1,39 @@
+[v9h-drift-forensics] GAIA_V7_SKY_HISTORY reject=false
+[v9h-drift-forensics] loaded "/Users/pascaldisse/projects/magic-crystal-v9body/packages/scrying-glass/data/rdirect-weights-v9h-last.bin" (652632 bytes)
+[v9h-drift-forensics] bar-res 640x480 K=3 steps, ref_frames=64, K_DRAWS=8, target n_repeats=32
+[v9h-drift-forensics] bar-res sparkle 29.3/Mpx (reference: v9h-last PROBE epoch 124 reported 29.3/Mpx at this same res/pose — this run's own trace RNG differs from training's, small drift expected)
+[v9h-drift-forensics] 9 sparkle-flagged texels located
+# V9I GRAD-PROBE this run: overshoot_w=4 nohit_albedo_sq=0.00000001 n_elems=921600
+# V9H DRIFT-SOURCE FORENSICS — bar-res 640x480, val_cam=orbit_-20, weights="/Users/pascaldisse/projects/magic-crystal-v9body/packages/scrying-glass/data/rdirect-weights-v9h-last.bin"
+# domain: dl = demod-log (loss space); lin = linear radiance (undo_log_demod). Luminance = 0.2126R+0.7152G+0.0722B.
+# columns: px err_lin(sparkle) | net_raw_dl net_presented_dl net_lin(clamped) | teacher_lin teacher_dl(same divisor) | target_dl_mean target_lin_of_dl_mean target_lin_direct(256-draw MC) | ceiling_dl | albedo divisor
+px=( 19,257) err_lin=0.4199 | net_raw_dl=(0.2614,0.5969,0.4841) net_presented_dl=(0.0849,0.5969,0.4841) net_lin=(0.0886,0.8164,0.6227) | teacher_lin=(0.0466,0.2666,0.3762) teacher_dl=(0.0456,0.2364,0.3193) | target_dl_mean=(0.0434,0.2317,0.3111) target_lin_of_dl_mean=(0.0444,0.2607,0.3649) target_lin_direct256=(0.0444,0.2704,0.3835) | ceiling_dl=(0.0849,0.7046,0.9042) | albedo=(0.0000,0.0000,0.0000) divisor=(1.0000,1.0000,1.0000)
+[grad-probe] px=( 19,257) active=[false, true, true] d_out_BEFORE_stale=(0.00000000,0.00000079,0.00000038) d_out_CURE4_actual=(0.00000153,0.00000079,0.00000038) d_out_AFTER_fix=(0.00000047,0.00000079,0.00000038)
+px=( 17,257) err_lin=0.3031 | net_raw_dl=(0.2496,0.6276,0.5898) net_presented_dl=(0.0835,0.6276,0.5898) net_lin=(0.0870,0.8731,0.8036) | teacher_lin=(0.0393,0.4750,0.6897) teacher_dl=(0.0386,0.3886,0.5245) | target_dl_mean=(0.0417,0.4222,0.5622) target_lin_of_dl_mean=(0.0426,0.5254,0.7545) target_lin_direct256=(0.0426,0.5403,0.7823) | ceiling_dl=(0.0835,0.7046,0.9042) | albedo=(0.0000,0.0000,0.0000) divisor=(1.0000,1.0000,1.0000)
+[grad-probe] px=( 17,257) active=[false, true, true] d_out_BEFORE_stale=(0.00000000,0.00000045,0.00000006) d_out_CURE4_actual=(0.00000144,0.00000045,0.00000006) d_out_AFTER_fix=(0.00000045,0.00000045,0.00000006)
+px=(332,252) err_lin=0.2696 | net_raw_dl=(0.2731,0.6204,0.6305) net_presented_dl=(0.0548,0.6059,0.6305) net_lin=(0.0563,0.8328,0.8786) | teacher_lin=(0.0289,0.4808,0.7122) teacher_dl=(0.0285,0.3926,0.5378) | target_dl_mean=(0.0258,0.3408,0.4704) target_lin_of_dl_mean=(0.0261,0.4061,0.6007) target_lin_direct256=(0.0262,0.4155,0.6172) | ceiling_dl=(0.0548,0.6059,0.7606) | albedo=(0.0000,0.0000,0.0000) divisor=(1.0000,1.0000,1.0000)
+[grad-probe] px=(332,252) active=[false, false, true] d_out_BEFORE_stale=(0.00000000,0.00000000,0.00000035) d_out_CURE4_actual=(0.00000190,0.00000013,0.00000035) d_out_AFTER_fix=(0.00000054,0.00000061,0.00000035)
+px=(321,249) err_lin=0.2516 | net_raw_dl=(0.4308,0.8151,0.6988) net_presented_dl=(0.0531,0.6305,0.6988) net_lin=(0.0546,0.8785,1.0113) | teacher_lin=(0.0341,0.5574,0.7678) teacher_dl=(0.0335,0.4430,0.5697) | target_dl_mean=(0.0388,0.5008,0.6340) target_lin_of_dl_mean=(0.0396,0.6501,0.8852) target_lin_direct256=(0.0397,0.6735,0.9212) | ceiling_dl=(0.0531,0.6305,0.7856) | albedo=(0.0000,0.0000,0.0000) divisor=(1.0000,1.0000,1.0000)
+[grad-probe] px=(321,249) active=[false, false, true] d_out_BEFORE_stale=(0.00000000,0.00000000,0.00000014) d_out_CURE4_actual=(0.00000328,0.00000160,0.00000014) d_out_AFTER_fix=(0.00000085,0.00000068,0.00000014)
+px=(335,252) err_lin=0.2049 | net_raw_dl=(0.1871,0.5255,0.7536) net_presented_dl=(0.0690,0.5255,0.7536) net_lin=(0.0715,0.6912,1.1247) | teacher_lin=(0.0283,0.4621,0.6837) teacher_dl=(0.0279,0.3799,0.5210) | target_dl_mean=(0.0235,0.2970,0.4136) target_lin_of_dl_mean=(0.0238,0.3458,0.5123) target_lin_direct256=(0.0238,0.3596,0.5376) | ceiling_dl=(0.0690,0.8176,1.0014) | albedo=(0.0000,0.0000,0.0000) divisor=(1.0000,1.0000,1.0000)
+[grad-probe] px=(335,252) active=[false, true, true] d_out_BEFORE_stale=(0.00000000,0.00000050,0.00000074) d_out_CURE4_actual=(0.00000102,0.00000050,0.00000074) d_out_AFTER_fix=(0.00000036,0.00000050,0.00000074)
+px=(339,252) err_lin=0.1943 | net_raw_dl=(0.1969,0.5203,0.7550) net_presented_dl=(0.0463,0.5203,0.7055) net_lin=(0.0474,0.6826,1.0249) | teacher_lin=(0.0279,0.4526,0.6690) teacher_dl=(0.0275,0.3734,0.5122) | target_dl_mean=(0.0291,0.3899,0.5307) target_lin_of_dl_mean=(0.0295,0.4769,0.7001) target_lin_direct256=(0.0295,0.4948,0.7314) | ceiling_dl=(0.0463,0.5552,0.7055) | albedo=(0.0000,0.0000,0.0000) divisor=(1.0000,1.0000,1.0000)
+[grad-probe] px=(339,252) active=[false, true, false] d_out_BEFORE_stale=(0.00000000,0.00000028,0.00000000) d_out_CURE4_actual=(0.00000131,0.00000028,0.00000043) d_out_AFTER_fix=(0.00000036,0.00000028,0.00000049)
+px=(337,260) err_lin=0.1842 | net_raw_dl=(0.3497,0.8059,0.9915) net_presented_dl=(0.0970,0.8024,0.8904) net_lin=(0.1018,1.2308,1.4360) | teacher_lin=(0.0819,1.0067,1.1637) teacher_dl=(0.0787,0.6965,0.7718) | target_dl_mean=(0.0862,0.7342,0.8104) target_lin_of_dl_mean=(0.0901,1.0838,1.2489) target_lin_direct256=(0.0905,1.1256,1.2993) | ceiling_dl=(0.0970,0.8024,0.8904) | albedo=(0.0000,0.0000,0.0000) divisor=(1.0000,1.0000,1.0000)
+[grad-probe] px=(337,260) active=[false, false, false] d_out_BEFORE_stale=(0.00000000,0.00000000,0.00000000) d_out_CURE4_actual=(0.00000219,0.00000003,0.00000088) d_out_AFTER_fix=(0.00000057,0.00000016,0.00000039)
+px=( 13,257) err_lin=0.1600 | net_raw_dl=(0.3248,0.5658,0.5112) net_presented_dl=(0.0688,0.5658,0.5112) net_lin=(0.0712,0.7608,0.6672) | teacher_lin=(0.0313,0.5366,0.7904) teacher_dl=(0.0308,0.4296,0.5824) | target_dl_mean=(0.0320,0.4418,0.5959) target_lin_of_dl_mean=(0.0326,0.5556,0.8147) target_lin_direct256=(0.0326,0.5693,0.8385) | ceiling_dl=(0.0688,0.6144,0.8036) | albedo=(0.0000,0.0000,0.0000) divisor=(1.0000,1.0000,1.0000)
+[grad-probe] px=( 13,257) active=[false, true, true] d_out_BEFORE_stale=(0.00000000,0.00000027,-0.00000018) d_out_CURE4_actual=(0.00000222,0.00000027,-0.00000018) d_out_AFTER_fix=(0.00000064,0.00000027,-0.00000018)
+px=(282,247) err_lin=0.1514 | net_raw_dl=(0.2558,0.4647,0.4982) net_presented_dl=(0.0257,0.2956,0.4271) net_lin=(0.0261,0.3439,0.5328) | teacher_lin=(0.0158,0.1635,0.2526) teacher_dl=(0.0157,0.1515,0.2252) | target_dl_mean=(0.0182,0.1953,0.2810) target_lin_of_dl_mean=(0.0183,0.2157,0.3244) target_lin_direct256=(0.0183,0.2242,0.3405) | ceiling_dl=(0.0257,0.2956,0.4271) | albedo=(0.0000,0.0000,0.0000) divisor=(1.0000,1.0000,1.0000)
+[grad-probe] px=(282,247) active=[false, false, false] d_out_BEFORE_stale=(0.00000000,0.00000000,0.00000000) d_out_CURE4_actual=(0.00000200,0.00000147,0.00000062) d_out_AFTER_fix=(0.00000052,0.00000058,0.00000047)
+
+# ---- VERDICT AGGREGATION over 9 sampled flagged texels (dl-space margin=0.05) ----
+# target_dl_mean > teacher_dl + margin (TARGET BIAS signal): 2/9
+# target_dl_mean within margin of teacher_dl (TARGET~TEACHER, SHARED-WEIGHT signal): 5/9
+# net_presented_dl > target_dl_mean + margin (net overshoots EVEN the noisy label): 9/9
+# divisor <= 2*ALBEDO_DEMOD_EPS (0.0020) (DEMOD DEGENERACY signal, near-zero albedo): 0/9
+
+# ---- V9I GRAD-PROBE AGGREGATE over 9 texels x 3 channels = 27 readings ----
+# BEFORE_stale (pre-CURE4 zero-gate, matches GAIA_V9H_GRAD_PROBE=1's hardcoded formula) d_out==0.0: 16/27
+# CURE4_actual (real training-loop formula, overshoot_w=4) d_out==0.0: 0/27
+# AFTER_fix (V9I mask-based ordinary loss @ albedo~0/no-hit) d_out==0.0: 0/27
+[v9h-drift-forensics] wrote "/Users/pascaldisse/projects/magic-crystal-v9body/packages/scrying-glass/scratch/v9h-drift-forensics.json"

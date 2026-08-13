@@ -1,0 +1,24 @@
+{
+  "ablation_tag": "v9z-ep50",
+  "architecture": {
+    "in_channels": 41,
+    "kernel": 3,
+    "kind": "v9-body shape-parametric multi-scale conv U-Net (rdirect_unet.rs), CPU-trainable twin (rdirect_unet.rs::cpu)",
+    "n_scales": 3,
+    "out_channels": 3,
+    "params_approx": 163083,
+    "widths": [
+      24,
+      40,
+      64
+    ]
+  },
+  "artifact": "rdirect-weights-v9z-ep50.bin",
+  "checkpoint_kind": "PERIODIC — unconditional EMA snapshot at epoch 50 (GAIA_V9_CKPT_EVERY=25), independent of the best-checkpoint scorer (best_metric=bar) — insurance against a *BEST scorer losing track of a good body mid-training (v9y sweet-zone-loss postmortem)",
+  "val_128x72_at_snapshot": {
+    "highlight_ratio": 0.7682266393412129,
+    "resid": 0.035407579768227844,
+    "sparkle_per_mpx": 0.0
+  },
+  "weights_sha256": "839ae8d8564cd6263d556a4021785aff7c35756171649be227356f543db7d5bb"
+}
