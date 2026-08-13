@@ -1,0 +1,11 @@
+[package]
+name = "fieldlang-gate"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+field = { path = "../field" }
+
+[[bin]]
+name = "flgate"
+path = "src/bin/flgate.rs"

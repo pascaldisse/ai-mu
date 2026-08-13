@@ -1,0 +1,6 @@
+# 原子代数 — two atoms, bind, bundle (counted list: 束 dst n srcs...)
+界 16 16 6 42
+種 2 42
+種 3 7
+縛 4 2 3
+束 5 2 2 3
