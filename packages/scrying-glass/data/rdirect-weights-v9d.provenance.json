@@ -1,0 +1,86 @@
+{
+  "ablation_tag": "v9d",
+  "architecture": {
+    "in_channels": 41,
+    "kernel": 3,
+    "kind": "v9-body shape-parametric multi-scale conv U-Net (rdirect_unet.rs), CPU-trainable twin (rdirect_unet.rs::cpu)",
+    "n_scales": 3,
+    "out_channels": 3,
+    "params_approx": 163083,
+    "widths": [
+      24,
+      40,
+      64
+    ]
+  },
+  "artifact": "rdirect-weights-v9d.bin",
+  "dataset": {
+    "low": [
+      64,
+      36
+    ],
+    "native": [
+      128,
+      72
+    ],
+    "realm": "naruko",
+    "train": [
+      "front-pool",
+      "wide-pool",
+      "high-pool",
+      "close-pool",
+      "mirror (fixed, unconditional)"
+    ],
+    "val": [
+      "orbit_-20 (still, FIXED, held-out)",
+      "mirror (still, FIXED, held-out)"
+    ]
+  },
+  "doctrine_concordance": "STAGE 2 of the v9-body lane: v8d's TIER1(estimator-init: NOT ported, no analytic estimator-init exists for a conv net yet — FRESH He-init instead, disclosed)+TIER2(K-averaged noise2noise, K={k_draws}, teacher=validator-only)+TIER3(structure: moving-camera history w/ REAL reprojection + curved-mirror/low-roughness pose + EMA history-source, kept as structural mechanisms, NOT the training signal) — same doctrine, whole-image conv body, plus v9c's domain-fixed monitor + pose-diversity pool AND v9d's own wider pool + EMA-vs-raw monitor split (this lane's own cure for the v9c autopsy's 'diversity delays/deepens but does not cure onset' verdict)",
+  "gate": "NOT ordealed — v9d output only, no bar claimed passed",
+  "supersedes": "rdirect-weights-v9c.bin (v9d = v9c + POOL MUCH WIDER (4 anchors, full-orbit yaw, draws/epoch ↑) + EMA-eval-with-raw-logged-alongside, see module doc)",
+  "training": {
+    "domain_fix": "settle()/run_monitor now undo_log_demod the final step's output (per-pixel albedo divisor) before every metric — same fix as rdirect_v9_eval_640.rs, ported back into the trainer's own in-loop monitor (scratch/v9-autopsy.md conviction #2), unchanged from v9c",
+    "ema": {
+      "decay": 0.9990000128746033,
+      "note": "CURE (b) v9d: Polyak EMA weights (kept from v9c/cf8bd7b) — monitor/checkpoint/best-floor/abort-watchdog evaluate ONLY the EMA net; the raw (non-EMA) net's val score is now ALSO settled + logged every monitor line (module doc CURE (b)) but never drives best_score/rising_streak/the checkpoint"
+    },
+    "epochs": 300,
+    "highlight_recovery": "same mechanism as K-averaged noise2noise (v8c/v8d doctrine) — NOT a separate loss term; highlight_ratio reported validator-only every epoch",
+    "history_precompute": "once per epoch, sourced from EMA net (kept, cf8bd7b), whole-image conv forward per step",
+    "init": "FRESH He-init (UnetWeights::new_random) — no conv-net analytic estimator-init exists yet, disclosed gap vs v8d's TIER1",
+    "k_draws": 8,
+    "loss": "whole-image MSE(net(step features), mean of K=8 independent draw radiances) — teacher NEVER in the loss, validator only (v8d TIER2 doctrine, ported)",
+    "lr0": 0.00009999999747378752,
+    "mirror_pose": {
+      "camera": "denoiser_dataset::mirror_camera",
+      "evidence_spp": 4,
+      "note": "curved-mirror/low-roughness pose, kept unconditionally FIXED (v8/A3-innocent parity) — NOT part of the diversity pool"
+    },
+    "moving_camera_settle": {
+      "note": "REAL reprojection via CamPose::reproject + depth/normal guard, NOT identity feedback — v8d parity",
+      "pan_step_rad_per_step": 0.004000000189989805
+    },
+    "pose_diversity": {
+      "anchors": [
+        "front",
+        "wide",
+        "high (front pivot, raised eye y=12)",
+        "close (front pivot, closer eye z=10)"
+      ],
+      "draws_per_anchor": 2,
+      "draws_per_epoch": 8,
+      "note": "CURE (a) v9d: full-orbit yaw in [-pool_orbit_deg,+pool_orbit_deg] about each anchor's pivot + eye-position jitter box (±pool_jitter world units, vertical ×0.4), fresh draw every epoch, draws_per_anchor draws per anchor, 4 anchors (was v9c's 2 anchors, 3 draws total) — replaces v9c's 2-anchor/3-draw pool",
+      "pool_jitter": 0.8999999761581421,
+      "pool_orbit_deg": 180.0
+    },
+    "ref_frames_validator_only": 64,
+    "resolution_train": [
+      128,
+      72
+    ],
+    "sky_history_reject_active": true,
+    "unroll_steps": 3
+  },
+  "weights_sha256": "6eb16264b3a7fd906bd01e9c832a7d0ee9addea2275b333a20fd58a7299b6c9c"
+}

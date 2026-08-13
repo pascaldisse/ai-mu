@@ -1,0 +1,76 @@
+    Finished `release` profile [optimized] target(s) in 0.23s
+     Running `/Users/pascaldisse/projects/magic-crystal-v9body/target/release/examples/rdirect_train_v9b`
+[v9b] GAIA_V7_SKY_HISTORY reject=true — mandate expects true (set GAIA_V7_SKY_HISTORY=reject)
+[v9b] res 128x72 K=3 steps, GAIA_V9_K=8 noise2noise draws (variance/8, teacher validator-only)
+[v9b] training poses (mirror always on, A3-innocent): ["front", "wide", "orbit_+20", "mirror"]
+[v9b] rendered 4+2 MOVING/STILL pose sequences (128x72, teacher 64 VALIDATOR ONLY, pan_step=0.004, mirror_spp=4) in 3.2s
+[v9b] UnetConfig widths=[24, 40, 64] n_scales=3 params≈163083
+[v9b] MONITOR epoch -1 (fresh He-init): val sparkle 0.0/Mpx resid 0.1464 highlight_ratio -0.278 score=4.184 | mirror sparkle 0.0/Mpx resid 0.1432 highlight_ratio -0.240 (tgt sp<16 resid<0.035) *BEST->saved rising_streak=0/20
+[v9b] epoch 0/300 n2n_mse=0.166282 lr=0.000100 hist_ms=5063 batch_ms=8259 (13.3s)
+[v9b] MONITOR epoch 0: val sparkle 0.0/Mpx resid 0.1461 highlight_ratio -0.274 score=4.174 | mirror sparkle 0.0/Mpx resid 0.1428 highlight_ratio -0.237 (tgt sp<16 resid<0.035) *BEST->saved rising_streak=0/20
+[v9b] epoch 1/300 n2n_mse=0.099285 lr=0.000100 hist_ms=5053 batch_ms=8190 (29.1s)
+[v9b] MONITOR epoch 1: val sparkle 0.0/Mpx resid 0.1454 highlight_ratio -0.267 score=4.153 | mirror sparkle 0.0/Mpx resid 0.1417 highlight_ratio -0.232 (tgt sp<16 resid<0.035) *BEST->saved rising_streak=0/20
+[v9b] epoch 2/300 n2n_mse=0.077167 lr=0.000099 hist_ms=5031 batch_ms=8219 (44.9s)
+[v9b] MONITOR epoch 2: val sparkle 0.0/Mpx resid 0.1445 highlight_ratio -0.256 score=4.128 | mirror sparkle 0.0/Mpx resid 0.1404 highlight_ratio -0.225 (tgt sp<16 resid<0.035) *BEST->saved rising_streak=0/20
+[v9b] epoch 3/300 n2n_mse=0.071209 lr=0.000099 hist_ms=5029 batch_ms=8101 (60.5s)
+[v9b] MONITOR epoch 3: val sparkle 0.0/Mpx resid 0.1436 highlight_ratio -0.246 score=4.102 | mirror sparkle 0.0/Mpx resid 0.1390 highlight_ratio -0.218 (tgt sp<16 resid<0.035) *BEST->saved rising_streak=0/20
+[v9b] epoch 4/300 n2n_mse=0.067120 lr=0.000099 hist_ms=5049 batch_ms=8390 (76.5s)
+[v9b] MONITOR epoch 4: val sparkle 0.0/Mpx resid 0.1427 highlight_ratio -0.235 score=4.077 | mirror sparkle 0.0/Mpx resid 0.1377 highlight_ratio -0.210 (tgt sp<16 resid<0.035) *BEST->saved rising_streak=0/20
+[v9b] epoch 5/300 n2n_mse=0.064248 lr=0.000098 hist_ms=5088 batch_ms=8453 (92.6s)
+[v9b] MONITOR epoch 5: val sparkle 0.0/Mpx resid 0.1419 highlight_ratio -0.223 score=4.053 | mirror sparkle 0.0/Mpx resid 0.1365 highlight_ratio -0.203 (tgt sp<16 resid<0.035) *BEST->saved rising_streak=0/20
+[v9b] epoch 6/300 n2n_mse=0.062191 lr=0.000098 hist_ms=5102 batch_ms=8368 (108.7s)
+[v9b] MONITOR epoch 6: val sparkle 0.0/Mpx resid 0.1411 highlight_ratio -0.212 score=4.031 | mirror sparkle 0.0/Mpx resid 0.1353 highlight_ratio -0.195 (tgt sp<16 resid<0.035) *BEST->saved rising_streak=0/20
+[v9b] epoch 7/300 n2n_mse=0.060500 lr=0.000098 hist_ms=5082 batch_ms=8280 (124.6s)
+[v9b] MONITOR epoch 7: val sparkle 0.0/Mpx resid 0.1403 highlight_ratio -0.201 score=4.010 | mirror sparkle 0.0/Mpx resid 0.1341 highlight_ratio -0.188 (tgt sp<16 resid<0.035) *BEST->saved rising_streak=0/20
+[v9b] epoch 8/300 n2n_mse=0.059352 lr=0.000097 hist_ms=5047 batch_ms=8357 (140.5s)
+[v9b] MONITOR epoch 8: val sparkle 0.0/Mpx resid 0.1396 highlight_ratio -0.190 score=3.990 | mirror sparkle 0.0/Mpx resid 0.1331 highlight_ratio -0.180 (tgt sp<16 resid<0.035) *BEST->saved rising_streak=0/20
+[v9b] epoch 9/300 n2n_mse=0.057937 lr=0.000097 hist_ms=5030 batch_ms=8568 (156.6s)
+[v9b] MONITOR epoch 9: val sparkle 0.0/Mpx resid 0.1390 highlight_ratio -0.178 score=3.971 | mirror sparkle 0.0/Mpx resid 0.1321 highlight_ratio -0.172 (tgt sp<16 resid<0.035) *BEST->saved rising_streak=0/20
+[v9b] epoch 10/300 n2n_mse=0.056679 lr=0.000097 hist_ms=5029 batch_ms=8898 (173.1s)
+[v9b] MONITOR epoch 10: val sparkle 108.5/Mpx resid 0.1384 highlight_ratio -0.167 score=3.954 | mirror sparkle 0.0/Mpx resid 0.1312 highlight_ratio -0.164 (tgt sp<16 resid<0.035) *BEST->saved rising_streak=0/20
+[v9b] epoch 11/300 n2n_mse=0.055773 lr=0.000096 hist_ms=5081 batch_ms=8478 (189.2s)
+[v9b] MONITOR epoch 11: val sparkle 108.5/Mpx resid 0.1378 highlight_ratio -0.155 score=3.937 | mirror sparkle 0.0/Mpx resid 0.1303 highlight_ratio -0.156 (tgt sp<16 resid<0.035) *BEST->saved rising_streak=0/20
+[v9b] epoch 12/300 n2n_mse=0.054739 lr=0.000096 hist_ms=5043 batch_ms=8420 (205.2s)
+[v9b] MONITOR epoch 12: val sparkle 217.0/Mpx resid 0.1373 highlight_ratio -0.143 score=5.425 | mirror sparkle 0.0/Mpx resid 0.1295 highlight_ratio -0.148 (tgt sp<16 resid<0.035) rising_streak=1/20
+[v9b] epoch 13/300 n2n_mse=0.054036 lr=0.000096 hist_ms=5050 batch_ms=8429 (221.2s)
+[v9b] MONITOR epoch 13: val sparkle 217.0/Mpx resid 0.1368 highlight_ratio -0.132 score=5.425 | mirror sparkle 0.0/Mpx resid 0.1287 highlight_ratio -0.140 (tgt sp<16 resid<0.035) rising_streak=2/20
+[v9b] epoch 14/300 n2n_mse=0.053067 lr=0.000096 hist_ms=5041 batch_ms=8581 (237.3s)
+[v9b] MONITOR epoch 14: val sparkle 217.0/Mpx resid 0.1363 highlight_ratio -0.120 score=5.425 | mirror sparkle 0.0/Mpx resid 0.1280 highlight_ratio -0.131 (tgt sp<16 resid<0.035) rising_streak=3/20
+[v9b] epoch 15/300 n2n_mse=0.052479 lr=0.000095 hist_ms=5039 batch_ms=8575 (253.4s)
+[v9b] MONITOR epoch 15: val sparkle 217.0/Mpx resid 0.1359 highlight_ratio -0.108 score=5.425 | mirror sparkle 0.0/Mpx resid 0.1273 highlight_ratio -0.123 (tgt sp<16 resid<0.035) rising_streak=4/20
+[v9b] epoch 16/300 n2n_mse=0.052125 lr=0.000095 hist_ms=5083 batch_ms=8597 (269.7s)
+[v9b] MONITOR epoch 16: val sparkle 325.5/Mpx resid 0.1355 highlight_ratio -0.096 score=8.138 | mirror sparkle 0.0/Mpx resid 0.1268 highlight_ratio -0.115 (tgt sp<16 resid<0.035) rising_streak=5/20
+[v9b] epoch 17/300 n2n_mse=0.051129 lr=0.000095 hist_ms=5064 batch_ms=8636 (285.9s)
+[v9b] MONITOR epoch 17: val sparkle 434.0/Mpx resid 0.1352 highlight_ratio -0.085 score=10.851 | mirror sparkle 0.0/Mpx resid 0.1263 highlight_ratio -0.106 (tgt sp<16 resid<0.035) rising_streak=6/20
+[v9b] epoch 18/300 n2n_mse=0.050269 lr=0.000094 hist_ms=5069 batch_ms=8729 (302.2s)
+[v9b] MONITOR epoch 18: val sparkle 434.0/Mpx resid 0.1349 highlight_ratio -0.073 score=10.851 | mirror sparkle 0.0/Mpx resid 0.1258 highlight_ratio -0.098 (tgt sp<16 resid<0.035) rising_streak=7/20
+[v9b] epoch 19/300 n2n_mse=0.049526 lr=0.000094 hist_ms=5092 batch_ms=8697 (318.6s)
+[v9b] MONITOR epoch 19: val sparkle 434.0/Mpx resid 0.1346 highlight_ratio -0.061 score=10.851 | mirror sparkle 0.0/Mpx resid 0.1254 highlight_ratio -0.089 (tgt sp<16 resid<0.035) rising_streak=8/20
+[v9b] epoch 20/300 n2n_mse=0.049080 lr=0.000094 hist_ms=5057 batch_ms=8755 (334.9s)
+[v9b] MONITOR epoch 20: val sparkle 542.5/Mpx resid 0.1344 highlight_ratio -0.049 score=13.563 | mirror sparkle 0.0/Mpx resid 0.1251 highlight_ratio -0.081 (tgt sp<16 resid<0.035) rising_streak=9/20
+[v9b] epoch 21/300 n2n_mse=0.048406 lr=0.000093 hist_ms=5047 batch_ms=8746 (351.3s)
+[v9b] MONITOR epoch 21: val sparkle 759.5/Mpx resid 0.1343 highlight_ratio -0.037 score=18.989 | mirror sparkle 0.0/Mpx resid 0.1248 highlight_ratio -0.073 (tgt sp<16 resid<0.035) rising_streak=10/20
+[v9b] epoch 22/300 n2n_mse=0.047637 lr=0.000093 hist_ms=5044 batch_ms=8810 (367.6s)
+[v9b] MONITOR epoch 22: val sparkle 1085.1/Mpx resid 0.1341 highlight_ratio -0.025 score=27.127 | mirror sparkle 0.0/Mpx resid 0.1246 highlight_ratio -0.064 (tgt sp<16 resid<0.035) rising_streak=11/20
+[v9b] epoch 23/300 n2n_mse=0.047017 lr=0.000093 hist_ms=5075 batch_ms=8954 (384.2s)
+[v9b] MONITOR epoch 23: val sparkle 1085.1/Mpx resid 0.1340 highlight_ratio -0.013 score=27.127 | mirror sparkle 0.0/Mpx resid 0.1245 highlight_ratio -0.055 (tgt sp<16 resid<0.035) rising_streak=12/20
+[v9b] epoch 24/300 n2n_mse=0.046426 lr=0.000093 hist_ms=5058 batch_ms=8781 (400.5s)
+[v9b] MONITOR epoch 24: val sparkle 1302.1/Mpx resid 0.1340 highlight_ratio -0.001 score=32.552 | mirror sparkle 0.0/Mpx resid 0.1244 highlight_ratio -0.046 (tgt sp<16 resid<0.035) rising_streak=13/20
+[v9b] epoch 25/300 n2n_mse=0.045862 lr=0.000092 hist_ms=5072 batch_ms=8788 (416.9s)
+[v9b] MONITOR epoch 25: val sparkle 1410.6/Mpx resid 0.1339 highlight_ratio 0.011 score=35.265 | mirror sparkle 0.0/Mpx resid 0.1243 highlight_ratio -0.037 (tgt sp<16 resid<0.035) rising_streak=14/20
+[v9b] epoch 26/300 n2n_mse=0.045423 lr=0.000092 hist_ms=5085 batch_ms=8840 (433.4s)
+[v9b] MONITOR epoch 26: val sparkle 1627.6/Mpx resid 0.1339 highlight_ratio 0.023 score=40.690 | mirror sparkle 0.0/Mpx resid 0.1243 highlight_ratio -0.027 (tgt sp<16 resid<0.035) rising_streak=15/20
+[v9b] epoch 27/300 n2n_mse=0.044745 lr=0.000092 hist_ms=5058 batch_ms=8839 (449.8s)
+[v9b] MONITOR epoch 27: val sparkle 1736.1/Mpx resid 0.1339 highlight_ratio 0.035 score=43.403 | mirror sparkle 0.0/Mpx resid 0.1243 highlight_ratio -0.018 (tgt sp<16 resid<0.035) rising_streak=16/20
+[v9b] epoch 28/300 n2n_mse=0.044542 lr=0.000091 hist_ms=5034 batch_ms=8883 (466.3s)
+[v9b] MONITOR epoch 28: val sparkle 2061.6/Mpx resid 0.1340 highlight_ratio 0.047 score=51.541 | mirror sparkle 0.0/Mpx resid 0.1244 highlight_ratio -0.008 (tgt sp<16 resid<0.035) rising_streak=17/20
+[v9b] epoch 29/300 n2n_mse=0.043898 lr=0.000091 hist_ms=5062 batch_ms=8995 (482.9s)
+[v9b] MONITOR epoch 29: val sparkle 2387.2/Mpx resid 0.1341 highlight_ratio 0.060 score=59.679 | mirror sparkle 108.5/Mpx resid 0.1246 highlight_ratio 0.001 (tgt sp<16 resid<0.035) rising_streak=18/20
+[v9b] epoch 30/300 n2n_mse=0.043821 lr=0.000091 hist_ms=5064 batch_ms=8904 (499.4s)
+[v9b] MONITOR epoch 30: val sparkle 2495.7/Mpx resid 0.1342 highlight_ratio 0.072 score=62.391 | mirror sparkle 217.0/Mpx resid 0.1247 highlight_ratio 0.011 (tgt sp<16 resid<0.035) rising_streak=19/20
+[v9b] epoch 31/300 n2n_mse=0.043184 lr=0.000091 hist_ms=5112 batch_ms=9088 (516.1s)
+[v9b] MONITOR epoch 31: val sparkle 2821.2/Mpx resid 0.1343 highlight_ratio 0.084 score=70.530 | mirror sparkle 325.5/Mpx resid 0.1250 highlight_ratio 0.020 (tgt sp<16 resid<0.035) rising_streak=20/20
+[v9b] CURE 2 ABORT-ON-DETONATION: score exceeded best*1.05 for 20 consecutive monitor epochs (>= 20) at epoch 31 — stopping, keeping best (score=3.937)
+[v9b] training done in 518.6s (best score=3.937)
+[v9b] wrote /Users/pascaldisse/projects/magic-crystal-v9body/packages/scrying-glass/data/rdirect-weights-v9b.bin sha256=b9b0ff0846c107ab1107ae42905b5b3620b5fcd67742b99be5ab928ebcbe7bb9
+[v9b] wrote provenance. tag=v9b weights=/Users/pascaldisse/projects/magic-crystal-v9body/packages/scrying-glass/data/rdirect-weights-v9b.bin
