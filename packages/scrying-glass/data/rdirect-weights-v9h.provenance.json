@@ -1,0 +1,91 @@
+{
+  "ablation_tag": "v9h-best",
+  "architecture": {
+    "in_channels": 41,
+    "kernel": 3,
+    "kind": "v9-body shape-parametric multi-scale conv U-Net (rdirect_unet.rs), CPU-trainable twin (rdirect_unet.rs::cpu)",
+    "n_scales": 3,
+    "out_channels": 3,
+    "params_approx": 163083,
+    "widths": [
+      24,
+      40,
+      64
+    ]
+  },
+  "artifact": "rdirect-weights-v9h.bin",
+  "checkpoint_kind": "BEST-SCORE — lowest 128x72 score=max(sp/40,resid/0.035) seen across all monitor calls, same convention v9/v9b/v9c/v9d/v9e used for their sole checkpoint",
+  "dataset": {
+    "low": [
+      64,
+      36
+    ],
+    "native": [
+      128,
+      72
+    ],
+    "realm": "naruko",
+    "train": [
+      "front-pivot-pool x2/epoch",
+      "wide-anchor-pool x1/epoch",
+      "mirror (fixed, unconditional)"
+    ],
+    "val": [
+      "orbit_-20 (still, FIXED, held-out)",
+      "mirror (still, FIXED, held-out)"
+    ]
+  },
+  "gate": "NOT ordealed — v9f output only, no bar claimed passed",
+  "supersedes": "rdirect-weights-v9e.bin (v9f = v9c/v9e mechanisms UNCHANGED + two-signal watchdog + dual checkpoints + periodic bar-res probe, see module doc)",
+  "training": {
+    "domain_fix": "settle()/run_monitor undo_log_demod the final step's output before every metric — v9c/v9e parity",
+    "epochs_requested": 300,
+    "init": "FRESH He-init (UnetWeights::new_random) — no conv-net analytic estimator-init exists yet, disclosed gap vs v8d's TIER1",
+    "k_draws": 8,
+    "loss": "whole-image MSE(net(step features), mean of K=8 independent draw radiances) — teacher NEVER in the loss, validator only (v8d TIER2 doctrine, ported); CURE 4 overshoot_w=4 (module doc): above-ceiling gradient is 2*overshoot_w*(raw-cap)/n, no longer zero",
+    "lr0": 0.00009999999747378752,
+    "pose_diversity": {
+      "anchors": [
+        "front-pivot (x2 draws/epoch)",
+        "wide-anchor (x1 draw/epoch)"
+      ],
+      "draws_per_epoch": 3,
+      "pool_jitter": 0.6000000238418579,
+      "pool_orbit_deg": 30.0
+    },
+    "ref_frames_validator_only": 64,
+    "resolution_train": [
+      128,
+      72
+    ],
+    "sky_history_reject_active": false,
+    "stop_reason": "bar-res probe sparkle failed the bar",
+    "unroll_steps": 3,
+    "watchdog": {
+      "score_streak_LOG_ONLY": {
+        "note": "v9c/v9d/v9e's OLD sole abort trigger (score=max(sp/40,resid/0.035) at 128x72 > best*1.05 sustained) — kept for log continuity, NO LONGER aborts training by itself; evidence this round (scratch/v9e-train.log ep51-72) showed it can detonate on a handful of coarse low-res pixels while resid/highlight_ratio/render-res sparkle all kept improving",
+        "param": 20
+      },
+      "signal_a_resid_streak": {
+        "note": "abort if val resid stays > best_resid_ever*1.05 for this many CONSECUTIVE monitor calls — mirrors v9c/v9d/v9e's OLD score-streak shape, now on resid",
+        "param": 20
+      },
+      "signal_b_bar_res_probe": {
+        "abort_if_sparkle_at_least": 16.0,
+        "eval_k": 3,
+        "eval_ref_frames": 64,
+        "eval_res": [
+          640,
+          480
+        ],
+        "note": "periodic rdirect_v9_eval_640.rs-equivalent measurement on the LIVE ema net, one failing probe aborts immediately",
+        "probe_every_epochs": 25
+      }
+    },
+    "winsorized_targets": {
+      "note": "CURE 3 (v9e), DEFAULT OFF this round — v9e forensics (scratch/v9e-train.log) showed it target-neutral (reproduced v9c exactly), see module doc",
+      "winsor_k": 0.0
+    }
+  },
+  "weights_sha256": "b4a0e0d8789c45244d73962e9a039a4a133e03df78496da101fb04f90badd2ce"
+}

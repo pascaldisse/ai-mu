@@ -1,0 +1,30 @@
+[package] scrying-glass v0.1.0 registered
+[world] /Users/pascaldisse/projects/magic-crystal-v9wire/worlds/naruko scene(s)=["main"] entities=47 chains=32 clusters=903 transmute=72.0ms
+[embodiment] spawn eye=Vec3(0.0, 7.0, 44.0) yaw=0 floor_triangles=10484 tick_dt=0.016666668
+[pleroma] BVH nodes=15537 triangles=23288 (static 12428 + dynamic 10860) build=13.1ms; 23 dynamic entit(ies) — living layer
+[pleroma] traced integrator spp=2 bounces=4 rr_start=2 — first_light is dead
+[wgpu] traced God's canvas 640x480; surface 960x640 = nearest integer display scale (Bgra8UnormSrgb)
+[frame] trace 640x480 → offscreen 960x640: median 8.38ms mean 8.58ms/frame (spp=2, 60-frame sample)
+[scry] GET http://127.0.0.1:8431/scry (alias: /screenshot; optional pos/yaw/pitch/fov/w/h; lab-only chain: lab=teacher-benchmark)
+[world-core] POST http://127.0.0.1:8431/op · GET /world · GET /events
+[embodiment] GET http://127.0.0.1:8431/pose · POST http://127.0.0.1:8431/walk {keys,yaw?,pitch?,ticks?}
+[offscreen] GAIA_NATIVE_OFFSCREEN=true: NO NSWindow — rendering to offscreen 960x640; /scry (?eye=belief|presented), /budget, /state on http://127.0.0.1:8431
+[EYE-TEST UNSTAMPED] weights /Users/pascaldisse/projects/magic-crystal-v9body/packages/scrying-glass/data/rdirect-weights-v9y.bin carry no PASS stamp (/Users/pascaldisse/projects/magic-crystal-v9body/packages/scrying-glass/data/rdirect-weights-v9y.bin.stamp) — presenting anyway per GAIA_EYE_TEST=1 (Pascal's own explicit override, NOT an ordeal pass, NOT the shipped bar)
+[v9-eye-test] GAIA_V9V_INPUT_CLAMP=0.1 — clamp ACTIVE in gather_v9's WGSL E/D tap blocks (median-of-4+delta ceiling, ported from rdirect_train_v9k.rs::apply_input_clamp).
+[v9-eye-test] GAIA_V9_COMPOSE=cpu (default) -- hit-gate compose runs on the CPU (readback + loop + reupload)
+[v9-eye-test] GAIA_V9_ASYNC=0 (default) -- serial (old, byte-identical) resolve_frame_v9
+[v9-eye-test] GAIA_NATIVE_ASYNC_TRACE=0 (default) -- serial (old, byte-identical) trace stage polling
+[v9-eye-test] GAIA_V9_TRACE_REUSE=0 (default) -- serial (old, byte-identical): composite + split trace both dispatch every frame
+[n0c] net-present rig pooled (God's res): trace 640x480 → net 640x480 → nearest blit → surface 960x640 (307200 px)
+[n0i] frames=60 640x480→640x480 (ms median/p95 vs 16.67): trace 11.12/11.56 gather 1.94/2.15 net[wall 11.62/12.43 gpu 4.42/5.28 commit 11.62/12.43 wait 0.00/0.00] demod 8.12/8.51 present 0.47/0.53 TOTAL 33.35/34.64 | WALL-FPS 22.2
+[n0i] frames=120 640x480→640x480 (ms median/p95 vs 16.67): trace 11.14/14.43 gather 1.96/2.22 net[wall 11.63/12.30 gpu 4.42/5.05 commit 11.63/12.30 wait 0.00/0.00] demod 7.88/8.48 present 0.47/0.55 TOTAL 33.39/36.58 | WALL-FPS 21.6
+[n0i] frames=180 640x480→640x480 (ms median/p95 vs 16.67): trace 13.30/15.77 gather 2.01/2.22 net[wall 11.64/12.09 gpu 4.42/4.93 commit 11.64/12.09 wait 0.00/0.00] demod 7.82/8.39 present 0.48/0.58 TOTAL 35.10/37.90 | WALL-FPS 20.8
+[n0i] frames=240 640x480→640x480 (ms median/p95 vs 16.67): trace 14.03/17.15 gather 2.03/2.36 net[wall 11.65/12.30 gpu 4.42/4.88 commit 11.65/12.30 wait 0.00/0.00] demod 7.93/9.35 present 0.48/0.76 TOTAL 36.12/44.02 | WALL-FPS 20.1
+[n0i] frames=300 640x480→640x480 (ms median/p95 vs 16.67): trace 15.23/17.15 gather 2.04/2.36 net[wall 11.65/12.37 gpu 4.42/4.81 commit 11.65/12.37 wait 0.00/0.00] demod 7.93/9.66 present 0.49/0.80 TOTAL 37.21/44.02 | WALL-FPS 19.7
+[n0i] frames=360 640x480→640x480 (ms median/p95 vs 16.67): trace 15.71/18.05 gather 2.04/2.54 net[wall 11.66/12.88 gpu 4.42/4.81 commit 11.66/12.88 wait 0.00/0.00] demod 7.94/10.62 present 0.49/1.13 TOTAL 37.88/44.68 | WALL-FPS 19.4
+[n0i] frames=420 640x480→640x480 (ms median/p95 vs 16.67): trace 15.91/19.06 gather 2.05/2.79 net[wall 11.67/12.97 gpu 4.42/4.77 commit 11.67/12.97 wait 0.00/0.00] demod 7.98/11.01 present 0.50/1.13 TOTAL 38.10/44.91 | WALL-FPS 19.1
+[n0i] frames=480 640x480→640x480 (ms median/p95 vs 16.67): trace 16.04/18.99 gather 2.06/2.84 net[wall 11.70/12.98 gpu 4.42/4.75 commit 11.70/12.98 wait 0.00/0.00] demod 7.98/10.92 present 0.50/1.09 TOTAL 38.32/45.02 | WALL-FPS 18.9
+=== /budget (combo00) frames=508 ===
+{"frames":509,"wall_ms":16.67,"wall_fps":18.88,"path":"v9-unet-bridged","canvas":[640,480],"stages":{"trace":[16.087,19.064],"gather":[2.057,2.863],"net_wall":[11.725,12.974],"net_gpu":[4.420,4.748],"net_commit":[11.725,12.974],"net_wait":[0.000,0.000],"demod":[7.987,11.184],"present":[0.505,1.173],"total":[38.424,45.016]},"outside":{"world":[14.456,14.901],"readback":[0.000,0.000],"http":[0.176,0.341],"loop_total":[53.188,60.267]},"world_stages":{"skin":[13.242,13.651],"command":[0.388,0.504],"tick":[12.810,13.173],"kami":[0.026,0.031],"apply":[0.011,0.014],"physics":[12.706,13.067],"rederive":[0.059,0.064],"solver_step":[12.599,12.947],"poll":[0.109,0.289],"gather":[0.122,0.149],"splice":[0.228,0.271],"upload":[0.516,0.609]}}
+=== /state (combo00) ===
+{"path":"v9-unet-bridged","canvas":[640,480],"pixels":307200,"frames":509,"weights":"/Users/pascaldisse/projects/magic-crystal-v9body/packages/scrying-glass/data/rdirect-weights-v9y.bin","in_channels":41,"out_channels":3,"hitgate":true,"compose":"cpu"}

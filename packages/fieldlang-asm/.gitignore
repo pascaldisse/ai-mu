@@ -1,0 +1,6 @@
+*.o
+*.bin
+test_emit
+test_lexer
+fieldc
+*.fldj
