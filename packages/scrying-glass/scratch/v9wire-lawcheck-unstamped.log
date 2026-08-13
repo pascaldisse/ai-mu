@@ -1,0 +1,12 @@
+[package] scrying-glass v0.1.0 registered
+[world] /Users/pascaldisse/projects/magic-crystal-v9wire/worlds/naruko scene(s)=["main"] entities=47 chains=32 clusters=903 transmute=73.3ms
+[embodiment] spawn eye=Vec3(0.0, 7.0, 44.0) yaw=0 floor_triangles=10484 tick_dt=0.016666668
+[pleroma] BVH nodes=15537 triangles=23288 (static 12428 + dynamic 10860) build=12.8ms; 23 dynamic entit(ies) — living layer
+[pleroma] traced integrator spp=2 bounces=4 rr_start=2 — first_light is dead
+[wgpu] traced God's canvas 640x480; surface 960x640 = nearest integer display scale (Bgra8UnormSrgb)
+[frame] trace 640x480 → offscreen 960x640: median 8.68ms mean 8.97ms/frame (spp=2, 60-frame sample)
+[scry] GET http://127.0.0.1:8431/scry (alias: /screenshot; optional pos/yaw/pitch/fov/w/h; lab-only chain: lab=teacher-benchmark)
+[world-core] POST http://127.0.0.1:8431/op · GET /world · GET /events
+[embodiment] GET http://127.0.0.1:8431/pose · POST http://127.0.0.1:8431/walk {keys,yaw?,pitch?,ticks?}
+[offscreen] GAIA_NATIVE_OFFSCREEN=true: NO NSWindow — rendering to offscreen 960x640; /scry (?eye=belief|presented), /budget, /state on http://127.0.0.1:8431
+[n0c] net-present disabled (build failed): REAL-IMAGE BAR: weights /Users/pascaldisse/projects/magic-crystal-v9body/packages/scrying-glass/data/rdirect-weights-v9y.bin carry no PASS stamp (/Users/pascaldisse/projects/magic-crystal-v9body/packages/scrying-glass/data/rdirect-weights-v9y.bin.stamp) — present BLACK by law (real or black)

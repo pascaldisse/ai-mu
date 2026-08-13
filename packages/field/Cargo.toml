@@ -1,0 +1,26 @@
+[package]
+name = "field"
+version = "0.1.0"
+edition = "2021"
+description = "V0 of the FIELD SUBSTRATE — a vector-symbolic (VSA/HRR) hyperdimensional store: the vector space that is also a database (§ FIELD.md, § AI-MU.md 'the field is also the database')"
+license = "MIT"
+
+[dependencies]
+# House entropy law (§ ENTROPY.md 'THERE IS NO RANDOMNESS'): random_vec is
+# `hash(seed, index)`, never a rolled die — reuse the splittable deterministic
+# hash stream already load-bearing for terrain/scatter instead of growing a
+# second one.
+seed = { path = "../seed" }
+# Zero-copy f32-slice <-> byte-slice casts for the mmap slab. No serde: the
+# on-disk format is a fixed-size binary record, not a self-describing document.
+bytemuck = "1"
+# SSD-as-RAM doctrine: the store is the mmap'd file, not a serialized blob
+# loaded into a separate in-memory structure.
+memmap2 = "0.9"
+
+[dev-dependencies]
+tempfile = "3"
+
+[[bench]]
+name = "throughput"
+harness = false
