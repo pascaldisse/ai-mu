@@ -1,0 +1,81 @@
+{
+  "ablation_tag": "v9e",
+  "architecture": {
+    "in_channels": 41,
+    "kernel": 3,
+    "kind": "v9-body shape-parametric multi-scale conv U-Net (rdirect_unet.rs), CPU-trainable twin (rdirect_unet.rs::cpu)",
+    "n_scales": 3,
+    "out_channels": 3,
+    "params_approx": 163083,
+    "widths": [
+      24,
+      40,
+      64
+    ]
+  },
+  "artifact": "rdirect-weights-v9e.bin",
+  "dataset": {
+    "low": [
+      64,
+      36
+    ],
+    "native": [
+      128,
+      72
+    ],
+    "realm": "naruko",
+    "train": [
+      "front-pivot-pool x2/epoch",
+      "wide-anchor-pool x1/epoch",
+      "mirror (fixed, unconditional)"
+    ],
+    "val": [
+      "orbit_-20 (still, FIXED, held-out)",
+      "mirror (still, FIXED, held-out)"
+    ]
+  },
+  "doctrine_concordance": "STAGE 2 of the v9-body lane: v8d's TIER1(estimator-init: NOT ported, no analytic estimator-init exists for a conv net yet — FRESH He-init instead, disclosed)+TIER2(K-averaged noise2noise, K={k_draws}, teacher=validator-only)+TIER3(structure: moving-camera history w/ REAL reprojection + curved-mirror/low-roughness pose + EMA history-source, kept as structural mechanisms, NOT the training signal) — same doctrine, whole-image conv body, v9c's domain-fixed monitor + narrow pose-diversity pool (unchanged), plus v9e's CURE 3 target-side winsorization (this round's own cure for the forensically-confirmed residual firefly tail in the K=8 noise2noise labels)",
+  "gate": "NOT ordealed — v9e output only, no bar claimed passed",
+  "supersedes": "rdirect-weights-v9c.bin (v9e = v9c CONFIG UNCHANGED + CURE 3 winsorized noise2noise targets, robust-target cure per v9-autopsy forensics, see module doc)",
+  "training": {
+    "domain_fix": "settle()/run_monitor now undo_log_demod the final step's output (per-pixel albedo divisor) before every metric — same fix as rdirect_v9_eval_640.rs, ported back into the trainer's own in-loop monitor (scratch/v9-autopsy.md conviction #2)",
+    "epochs": 300,
+    "highlight_recovery": "same mechanism as K-averaged noise2noise (v8c/v8d doctrine) — NOT a separate loss term; highlight_ratio reported validator-only every epoch",
+    "history_precompute": "once per epoch, sourced from EMA net (kept, cf8bd7b), whole-image conv forward per step",
+    "init": "FRESH He-init (UnetWeights::new_random) — no conv-net analytic estimator-init exists yet, disclosed gap vs v8d's TIER1",
+    "k_draws": 8,
+    "loss": "whole-image MSE(net(step features), mean of K=8 independent draw radiances) — teacher NEVER in the loss, validator only (v8d TIER2 doctrine, ported)",
+    "lr0": 0.00009999999747378752,
+    "mirror_pose": {
+      "camera": "denoiser_dataset::mirror_camera",
+      "evidence_spp": 4,
+      "note": "curved-mirror/low-roughness pose, kept unconditionally FIXED (v8/A3-innocent parity) — NOT part of the diversity pool"
+    },
+    "moving_camera_settle": {
+      "note": "REAL reprojection via CamPose::reproject + depth/normal guard, NOT identity feedback — v8d parity",
+      "pan_step_rad_per_step": 0.004000000189989805
+    },
+    "pose_diversity": {
+      "anchors": [
+        "front-pivot (x2 draws/epoch)",
+        "wide-anchor (x1 draw/epoch)"
+      ],
+      "draws_per_epoch": 3,
+      "note": "v9c CONFIG UNCHANGED (narrow ±30deg pool, NOT v9d's wide pool) — orbit yaw in [-pool_orbit_deg,+pool_orbit_deg] about each anchor's pivot + small eye-position jitter box (±pool_jitter world units, vertical ×0.4), fresh draw every epoch",
+      "pool_jitter": 0.6000000238418579,
+      "pool_orbit_deg": 30.0
+    },
+    "ref_frames_validator_only": 64,
+    "resolution_train": [
+      128,
+      72
+    ],
+    "sky_history_reject_active": true,
+    "unroll_steps": 3,
+    "winsorized_targets": {
+      "note": "CURE 3 (module doc) — K=8-averaged noise2noise target_dl winsorized per-channel against its own 7x7 local-mean * winsor_k ceiling BEFORE the loss ever sees it, distinct from CURE 1's net-output-side evidence clamp; forensics (scratch/v9-autopsy.md v9e section, rdirect_v9_tailmass.rs) found ~1.3% of v9c pool-pose target pixels >3x local mean, ~0.03% >10x, whole-image max/mean~15x — winsor_k=10 clips only the sparse extreme tail",
+      "winsor_k": 10.0
+    }
+  },
+  "weights_sha256": "a2fe6d71d8e3bfb9bf9b5a100d5fe521bfdf664963506554f4be962f37ed561d"
+}

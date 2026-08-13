@@ -1,0 +1,55 @@
+warning: unused import: `DEFAULT_DEGRADE_RATIO`
+  --> packages/scrying-glass/src/main.rs:22:42
+   |
+22 | use scrying_glass::bvh::{Bvh, BvhParams, DEFAULT_DEGRADE_RATIO, DynamicSplice, RefitParams};
+   |                                          ^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: fields `temporal_enabled`, `temporal_params`, `t_bind`, `t_parity`, `t_prev`, and `last_view` are never read
+    --> packages/scrying-glass/src/main.rs:2324:5
+     |
+2270 | struct Renderer {
+     |        -------- fields in this struct
+...
+2324 |     temporal_enabled: bool,
+     |     ^^^^^^^^^^^^^^^^
+2325 |     temporal_params: TemporalParams,
+     |     ^^^^^^^^^^^^^^^
+...
+2333 |     t_bind: [wgpu::BindGroup; 2],
+     |     ^^^^^^
+...
+2336 |     t_parity: usize,
+     |     ^^^^^^^^
+2337 |     t_prev: Option<IntegratorUniform>,
+     |     ^^^^^^
+2338 |     /// Eye pose the current fixed-canvas accumulation belongs to.
+2339 |     last_view: Option<([f32; 3], f32, f32)>,
+     |     ^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: method `view_key` is never used
+    --> packages/scrying-glass/src/main.rs:3019:8
+     |
+2371 | impl Renderer {
+     | ------------- method in this implementation
+...
+3019 |     fn view_key(&self) -> ([f32; 3], f32, f32) {
+     |        ^^^^^^^^
+
+warning: `scrying-glass` (bin "scrying-glass") generated 3 warnings (run `cargo fix --bin "scrying-glass" -p scrying-glass` to apply 1 suggestion)
+    Finished `release` profile [optimized] target(s) in 0.22s
+     Running tests/rdirect_gather_v9_ordeal.rs (/Users/pascaldisse/projects/magic-crystal-v9wire/target/release/deps/rdirect_gather_v9_ordeal-e8419af42633289a)
+
+running 2 tests
+[v9-gather] idx 0-38 vs Stage2 gather_hist_split: max abs 0.000e0
+test v9_gather_hist_slots_match_stage2_gather ... ok
+[v9-gather] frame 0 N=6144 x 41 feat · max abs 9.537e-7
+[v9-gather] frame 1 N=6144 x 41 feat · max abs 2.289e-5
+[v9-gather] OVERALL max abs 2.289e-5 (base[0-34] 9.537e-7 · hist[35-38] 6.258e-6 · mv[39-40] 2.289e-5) valid_px_frame1=5788
+test v9_gather_matches_cpu_reference ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.14s
+
