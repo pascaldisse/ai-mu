@@ -1,0 +1,45 @@
+[package]
+name = "oracle"
+version = "0.1.0"
+edition = "2021"
+description = "the Oracle — the senses of the Crystal: pull-only, data-space looking over the ECS (no GPU, no rendering); looking is a verb"
+license = "MIT"
+
+[lib]
+name = "oracle"
+path = "src/lib.rs"
+
+[[bin]]
+name = "oracle-cli"
+path = "src/bin/oracle_cli.rs"
+
+[dependencies]
+crystal = { path = "../../crates/crystal" }
+serde = { version = "1", features = ["derive"] }
+vessel = { path = "../vessel" }
+glam = "0.30.9"
+serde_json = "1"
+# VII-0b — `terrain_world_aabb` (model.rs) derives a `terrain` sigil's bounds
+# from the SAME `seed::TerrainSigil` schema the renderer parses. No cycle:
+# `seed` depends only on glam + transmutation (see `packages/seed/Cargo.toml`).
+seed = { path = "../seed" }
+
+[dev-dependencies]
+# GUARDIAN RULING F6 — senses read SOLVER TRUTH. `rest_pose_canon.rs` (and the
+# migrated physics rows in `canon.rs`, both via the shared `tests/rest_pose`
+# module) tick the realm's physics to rest through scrying-glass, then gaze at
+# the RESTED ECS with the oracle's own eyes. oracle and scrying-glass are
+# SIBLINGS (both depend only on `crystal`, which depends back on neither) —
+# scrying-glass never depends on oracle, so this dev-dep carries ZERO cycle
+# risk. Tests-only surface.
+scrying-glass = { path = "../scrying-glass" }
+# `elements::ContactMaterial::default().contact_margin` — the same body-vs-body
+# chain-step term physics.rs uses (F2/F3 convention), reused verbatim by the
+# shared rest-pose derivation so the analytic step matches physics.rs exactly.
+# Also the VI-2 same-wave canon ordeal (dev-only: the oracle crate proper stays
+# physics/geometry-agnostic).
+elements = { path = "../elements" }
+# VI-2 fragment birth for the same-wave ordeal. `fracture` depends on
+# `elements` + `transmutation` + `crystal`, never on `oracle` or
+# `scrying-glass` — no cycle either way.
+fracture = { path = "../fracture" }

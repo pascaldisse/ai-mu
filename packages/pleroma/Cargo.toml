@@ -1,0 +1,14 @@
+[package]
+name = "pleroma"
+version = "0.1.0"
+edition = "2021"
+description = "the Pleroma — the one light: a reference path integrator, the ground truth every render is tested against"
+license = "MIT"
+
+[dependencies]
+aether = { path = "../aether" }
+png = "0.17.16"
+
+[[example]]
+name = "cornell"
+path = "examples/cornell.rs"
