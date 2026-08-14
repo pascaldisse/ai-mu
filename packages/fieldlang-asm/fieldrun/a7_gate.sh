@@ -136,4 +136,18 @@ s=$(shasum -a 256 "$work/mc1024.flro" | cut -d' ' -f1)
 [ "$s" = "$sha200" ] || { echo 'gate: max_cells=1024 output drift' >&2; exit 1; }
 printf 'green   %-26s sha=%s (同一)\n' 'max-cells=1024-exact' "$s"
 
+# 6f. A9: max_bytes 引数(入力上限、静的 _filebuf 廃止)の歯
+sz=$(wc -c <"$work/a7.fldj" | tr -d ' ')
+if ./fieldrun "$work/a7.fldj" "$work/mb_small.flro" 16384 64 >/dev/null 2>&1; then
+  echo 'gate: tooth max-bytes-arg SURVIVED' >&2; exit 1
+else
+  rc=$?
+fi
+[ "$rc" -eq 16 ] || { echo "gate: max_bytes 超過 rc=$rc, expected 16" >&2; exit 1; }
+printf 'KILLED  %-26s rc=%s (max_bytes=64 < %s B)\n' 'tooth:max-bytes-arg' "$rc" "$sz"
+./fieldrun "$work/a7.fldj" "$work/mb_ok.flro" 16384 $((sz + 1)) >/dev/null
+s=$(shasum -a 256 "$work/mb_ok.flro" | cut -d' ' -f1)
+[ "$s" = "$sha200" ] || { echo 'gate: max_bytes 引数で output drift' >&2; exit 1; }
+printf 'green   %-26s sha=%s (max_bytes=%s で同一)\n' 'max-bytes-arg-exact' "$s" "$((sz + 1))"
+
 printf 'gate: fieldrun A7 (real fieldc journal, %sx%s, %s step, 三経路) OK\n' "$W" "$H" "$steps"

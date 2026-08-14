@@ -2,7 +2,10 @@
 // 契約: fieldrun/CONTRACT.md §2b · §3b · §4 A3 · §5(導出)· G11(不変式)。
 // 浮動小数/SIMD レジスタ 一切不使用。実行時 f32 算 禁 = bit 一致検査 + 即値定数。
 // 用: coef <c> <dt> <damping> <dx> <range>   (各 hex bits)
-//     -> stdout "c_cur=2040220160 c_lap=10737419 c_prev=-966478272"
+//     -> stdout "c_cur=2040216832 c_lap=10737419 c_prev=-966475008"
+// 骸(A9-4 Ashwin 訂正): 旧値 c_cur=2040220160 · c_prev=-966478272 = **誤**。
+//   因 = damping 0x3F7FBE77 の frac 誤読(8371319、真=8371831)→ 0.998969… 経路。
+//   真: sig=16760439 ∴ dd=13408351/2^27=0.09989999979734420776。
 // rc: 0 成功 · 22 非 canonical header(loud reject)· 23 不変式違反(|c_lap|>2^29)
 //     17 用法/hex 不正。
 // 公開記号: _coef_from_header(x0 = 5*u32 LE 配列, x1 = 3*i64 出力域)
@@ -49,13 +52,13 @@ _coef_from_header:
     b.ne Lcf_reject
 
     // canonical ∴ 固定定数(§5 の手算経路で導出済、実行時算術零)
-    movz x6, #0x4A00               // c_cur = 2040220160 = 0x799B4A00
+    movz x6, #0x3D00               // c_cur = 2040216832 = 0x799B3D00
     movk x6, #0x799B, lsl #16
     movz x7, #0xD70B               // c_lap = 10737419 = 0x00A3D70B
     movk x7, #0x00A3, lsl #16
-    movz x8, #0x49C0               // 966478272 = 0x399B49C0
+    movz x8, #0x3D00               // 966475008 = 0x399B3D00
     movk x8, #0x399B, lsl #16
-    neg x8, x8                     // c_prev = -966478272
+    neg x8, x8                     // c_prev = -966475008
 
     // 不変式(G11 · §2b): |c_lap| <= 2^29 を実測検査
     cmp x7, #0

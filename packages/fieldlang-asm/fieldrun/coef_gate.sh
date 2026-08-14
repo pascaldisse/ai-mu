@@ -28,7 +28,7 @@ work=$(mktemp -d ./coef-gate.XXXXXX)
 trap 'rm -rf "$work"' EXIT HUP INT TERM
 
 CANON='3F800000 3DCCCCCD 3F7FBE77 3F800000 3F800000'
-WANT='c_cur=2040220160 c_lap=10737419 c_prev=-966478272'
+WANT='c_cur=2040216832 c_lap=10737419 c_prev=-966475008'
 
 # ベクタ: 引数5|期待(出力 或 REJECT:rc)|註
 VECTORS="
@@ -85,8 +85,9 @@ tooth() { # <name> <sed-expr>
 }
 
 echo '--- 赤歯 ---'
-# 十進 0.999 起こしの係数(G2)= c_cur 2040219776
-tooth c_cur-decimal-damping 's|movz x6, #0x4A00|movz x6, #0x4880|'
+# 誤 frac 読み(旧 G2 経路 0.998969…)起こしの係数 = c_cur 2040220160 = 0x799B4A00(骸)
+tooth c_cur-misread-damping 's|movz x6, #0x3D00|movz x6, #0x4A00|'
+tooth c_prev-misread-damping 's|movz x8, #0x3D00|movz x8, #0x49C0|'
 tooth c_lap-truncate        's|movz x7, #0xD70B|movz x7, #0xD70A|'
 tooth c_prev-sign           's|    neg x8, x8|    nop|'
 tooth dt-check-removed      's|    movk w4, #0x3DCC, lsl #16|    ldr w4, [x0, #4]|'
