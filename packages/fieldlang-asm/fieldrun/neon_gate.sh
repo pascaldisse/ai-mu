@@ -65,7 +65,7 @@ printf 'green   %-22s %s\n' '4x4-known-sha' "$got4"
 # ---- 既定 = scalar の実証: neon を壊した build でも 旗無しは無傷 ----
 sed 's/lsl x4, x4, #29/lsl x4, x4, #28/' ../q30_wave/wave_neon.s >"$work/brk.s"
 as -arch arm64 -o "$work/brk.o" "$work/brk.s"
-ld -arch arm64 -o "$work/fr_brk" -e _main -lSystem fieldrun.o q20_conv_lib.o coef_lib.o \
+ld -arch arm64 -o "$work/fr_brk" -e _main -lSystem -lobjc -framework Metal -framework Foundation metal_bridge.o fieldrun.o q20_conv_lib.o coef_lib.o \
    wave_scalar.o "$work/brk.o" -syslibroot "$SDK"
 "$work/fr_brk" "$work/t4.fldj" "$work/brk_default.flro"
 cmp "$work/brk_default.flro" "$work/8x8-3tick-vecpath.s.flro" \
@@ -79,7 +79,7 @@ printf 'green   %-22s %s\n' 'default-is-scalar' '壊れた neon を連結して�
 # ---- no-fallback: neon 記号を潰す -> 赤(非零rc)。scalar 結果を返さぬ事 ----
 sed 's/_fl_q30_wave_neon/_fl_q30_wave_neon_GONE/g' ../q30_wave/wave_neon.s >"$work/gone.s"
 as -arch arm64 -o "$work/gone.o" "$work/gone.s"
-if ld -arch arm64 -o "$work/fr_gone" -e _main -lSystem fieldrun.o q20_conv_lib.o coef_lib.o \
+if ld -arch arm64 -o "$work/fr_gone" -e _main -lSystem -lobjc -framework Metal -framework Foundation metal_bridge.o fieldrun.o q20_conv_lib.o coef_lib.o \
      wave_scalar.o "$work/gone.o" -syslibroot "$SDK" >"$work/gone.out" 2>&1; then lrc=0; else lrc=$?; fi
 [ "$lrc" -ne 0 ] || { echo 'gate: no-fallback tooth SURVIVED (linked without neon symbol)' >&2; exit 1; }
 [ ! -x "$work/fr_gone" ] || { echo 'gate: binary produced despite missing neon symbol' >&2; exit 1; }
@@ -91,7 +91,7 @@ tooth() { # tooth <name> <sed-expr>  — t4(8x8)/t5(9x9) の何れかで scalar 
   sed "$expr" ../q30_wave/wave_neon.s >"$work/m.s"
   cmp -s "$work/m.s" ../q30_wave/wave_neon.s && { echo "gate: tooth $name did not mutate" >&2; exit 1; }
   if as -arch arm64 -o "$work/m.o" "$work/m.s" 2>"$work/m.aserr"; then
-    ld -arch arm64 -o "$work/mfr" -e _main -lSystem fieldrun.o q20_conv_lib.o coef_lib.o \
+    ld -arch arm64 -o "$work/mfr" -e _main -lSystem -lobjc -framework Metal -framework Foundation metal_bridge.o fieldrun.o q20_conv_lib.o coef_lib.o \
        wave_scalar.o "$work/m.o" -syslibroot "$SDK"
     killed=0; rcs=''
     for v in 8x8-3tick-vecpath:t4 9x9-3tick-vecedge:t5; do

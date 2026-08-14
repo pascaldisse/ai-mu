@@ -94,3 +94,6 @@ echo 'gate: fldj_parse A1 OK'
 
 # A5: --neon
 ./neon_gate.sh
+
+# A6: --metal(実機 GPU)
+./metal_gate.sh

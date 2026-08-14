@@ -411,3 +411,50 @@ saturating-vector ec09887b045dd627e746c0b7aaa3fc830e6368d41bd973c88e8287e22e38b7
 
 UNVERIFIED: A6(`--metal`)· A7(実 journal ≥200 step の三経路 SHA 一致)· A8 · A9 は未着手。
 `--neon` は arm64 macOS 実機のみ実測。
+
+## 13. A6 実装記(Varuna)
+
+`fieldrun --metal <metallib>`(第三 backend)。用 =
+`fieldrun [--neon | --metal <metallib path>] <in.fldj> <out.flro> [max_cells=16384]`。
+**metallib path = 引数(硬碼零** — 門が `fieldrun.s` に `metallib` 文字列が無い事を走査)。
+旗解釈 → `_fl_wave_metal_init(x0=path)`(≠0 = **rc=24 loud**)→ backend 函数ポインタ `[sp,#128]` に
+局所 thunk `_fr_metal_call` を据える。thunk = `x4=0(offset)` `x5=1(reps)` 固定で
+`_fl_q30_wave_metal` を呼び、**戻 -1 = rc=25**(CPU fallback **無し**、黙落経路は構造的に不在)。
+連結 = `../q30_wave_metal/metal_bridge.o` + `-lobjc -framework Metal -framework Foundation`。
+`fieldrun.s` は整数のみ(FP/SIMD 走査 無変更で緑・GPU 碼は `wave_q30.metal` に閉じる)。
+
+**門 `metal_gate.sh`(shell のみ・実機 GPU 実走)**: 三経路 FLRO **byte/SHA-256 一致**:
+```
+3c-2x2-one-tick   c34a1425e8f9abebc91115b85de11468b3e55cced8c254e4b5cf3b6ca4b0ac69
+4x4-3tick         a85a4cc0ee310770209e5a67834ed7693b159c6130eae7f5afe709b093050a3c  (契約既知値と一致)
+saturating-vector ec09887b045dd627e746c0b7aaa3fc830e6368d41bd973c88e8287e22e38b744
+8x8-3tick-vecpath 39343e40a9fad4641c3c95ac6430d39c9b89934908f4a6beb39c5c03801f7e92
+9x9-3tick-vecedge 169ff90f75a5a07446526d544afce91a747e1a54634996f6b00d010e3e4bbe6d
+40x40-4tick-gpu   6590b38f06421e17e1ed05d3e5ffb44896b4eae155df695ac80763e4873bae6a  (A6 追加=1600胞 非一様、GPU thread 多数)
+```
+GPU 実走証跡 = bridge の fd1 出力 `metal command status: 4` を門が実測 grep。
+
+赤歯(全 KILLED 実測): `metallib-absent`(rc=24・**出力 file を作らぬ** = scalar 結果を返さぬ)·
+`metal-reps-0`(rc=25)· `metal-offset-3`(4B 非倍数 offset → scalar と乖離)·
+`metal-fail-silent`(-1 検査削除、metallib 欠落下 rc=24)· `metal-init-silent`(init 検査削除、rc=25)·
+`metal-both-silent`(両検査削除 → rc=0 だが **出力≠scalar** ∴ 黙って CPU 相当値を返す経路は無い)·
+`metal-flro-magic-be`(出力 endianness 反転)· `metal-no-wait`(bridge の `waitUntilCompleted`
+選択子を潰す → rc=134 unrecognized selector)。
+緑歯(不変量として採点): `default-is-scalar`(旗無し = Metal 未接触)· `metal-state-reuse`
+(同一 process 内 二重 init でも byte 一致)· `metal-offset-inv`(offset=4/28 は scalar と byte 一致)。
+
+**死枝(因つき)**:
+- `metal-reps-2`: reps>1 = 同一入力の再走 ∴ out 不変、sat も dispatch 毎に零化される
+  (`metal_bridge.s:333`)∴ **FLRO から観測不能** → 偽の歯。観測可能な改変 = `reps=0` に置換。
+- `metal-offset-4`: byte_offset は bridge の **staging buffer 内部の置き場**で cur/prev/out 全てに
+  同一適用 ∴ 4B 倍数では**不変量**(`../q30_wave_metal/gate.sh` が 0/4/28 を同一結果として採点済)。
+  歯として立たぬ故 緑の不変量検査へ降格し、4B 非倍数(3)を歯に据えた。
+- 場の大型化: 前任 Vayu の教訓(小場は本体経路を踏まぬ)を継承し 40x40x4tick を追加。
+  8x8/9x9 の SHA は A5 と同値(場生成を変えぬ事で回帰性を保った)。
+
+既存門の緑維持(本 lane 実測): `fieldrun/gate.sh`(A1-A5 全歯 + A6)rc=0 ·
+`../gate.sh`(fieldlang-asm)rc=0 · `../q30_wave/gate.sh` rc=0 · `../q30_wave_metal/gate.sh` rc=0。
+`fieldrun_gate.sh`/`neon_gate.sh` の変異体 link 行に metal 連結を足した(**採点律は無変更**)。
+
+UNVERIFIED: A7(実 journal ≥200 step の三経路 SHA 一致)· A8 · A9 は **未着手**。
+`--metal` は arm64 macOS 実機 GPU のみ実測。big-endian host は未検。
