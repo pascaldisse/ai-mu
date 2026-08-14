@@ -1,26 +1,30 @@
-# HANDOFF — fldj-oracle-r12(最新 = Varuna, L3孫, 建役)
+# HANDOFF — fldj-oracle-r12(最新 = Prithvi, L3孫, 建役)
 
-状態: **A6 完**(`fieldrun --metal`)。A1..A6 全て緑。次 = **A7**。
+状態: **A7 完**(実 fieldc journal 三経路 ≥200step)。A1..A7 全緑。次 = **A8**。
 
 ## 直近 commit
-- `a4f979f` A6 段1 — `--metal <metallib>` backend(thunk offset=0/reps=1・rc=24 init失敗・rc=25 GPU失敗)
-- `1e2ca18` A6 段2 — `metal_gate.sh`(実機GPU)三経路 byte/SHA 一致 6 vector + 赤歯8 + 不変量緑3 + 契約 §13
+- `79bcae3` A7 — `gen_fld_a7.sh`(独立 .fld 生成器)+ `a7_gate.sh`(門)· `gate.sh` に連結
 
 ## 実測(生)
 ```
-green 4x4-3tick sha=a85a4cc0ee310770209e5a67834ed7693b159c6130eae7f5afe709b093050a3c (scalar==neon==metal)
-green 40x40-4tick-gpu sha=6590b38f06421e17e1ed05d3e5ffb44896b4eae155df695ac80763e4873bae6a
-green gpu-evidence metal command status: 4
-gate: fieldrun A6 (--metal) OK
+green   real-journal-32x32-200step sha=ead5a8fff10ea68936fd56bd2861de869328840c8e9a27dfcb18da919c9d3370 (scalar==neon==metal)
+green   gpu-evidence               metal command status: 4
+green   steps>=200                 steps=200 sat=175
+green   nonzero-evolution          sha0=7ec0c4c809a0d3d7c3335444197f0b00f383fa4351349d8ea5059c1a8aa29d13 diff_bytes=4083/4128
+KILLED  step-199 / init-field-phase1 / journal-1byte(off100) / max-cells-arg(rc=8)
+gate: fieldrun A7 OK
 ```
-既存門 rc=0: `fieldrun/gate.sh` · `packages/fieldlang-asm/gate.sh` · `q30_wave/gate.sh` · `q30_wave_metal/gate.sh`
+既存門 rc=0: `fieldrun/gate.sh`(A1-A7)· `fieldlang-asm/gate.sh` · `q30_wave/gate.sh` · `q30_wave_metal/gate.sh`
 
-## 次の建者への一歩目(A7)
-契約 §4-7: `寫 0 1024 <1024個>` + `歩 200` 以上の `.fld` を **shell のみ**で生成(生成器は fieldrun を読まぬ)
-→ `../fieldc` で compile → scalar/neon/metal 三経路実走 → **nonzero 出力** + FLRO SHA 一致を貼る。
-留意: fieldrun 既定 `max_cells=16384`(引数で可変)· 場は |v|<2048 に留める(rc=21)·
-`--metal` は metallib path 引数必須(`../q30_wave_metal/q30_wave.metallib`)。
+## Vishnu 死枝
+「decoder 不在 ∴ 三経路 ≥200step 一致 不成立」= **反証済**(上記 sha)。
+なお G1(FFT `wave_step` との bit 一致は主張不可)は有効 — 本一致は `wave_step_reference` 意味論内。
+
+## 次(A8)
+§3d 残余変異を `teeth_kill.sh` 式に**単独適用**し KILLED 一括表を出す。
+既に個別実証済 = rotation-2swap · sat-dropped · flro-steps-zero · ties-to-even · c_lap 十進 · 他(§9-§14)。
+A8 の要 = **一表に集約 + 未実証変異(truncation・trailing byte・bad tag/len・w*h 32bit 乗算・backend 強制失敗)**。
 
 ## UNVERIFIED
-- A7(実 journal ≥200 step 三経路 SHA)· A8(§3d 変異一括表)· A9(上流 D1/G2 修正)= 未着手
-- `--metal`/`--neon` は arm64 macOS 実機のみ。big-endian host 未検
+- A8 · A9(上流 D1/G2 修正)未着手
+- FLRO cell endian = host LE(big-endian 未検)· `--metal` は arm64 macOS 実機のみ
