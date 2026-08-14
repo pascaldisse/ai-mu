@@ -1,5 +1,9 @@
 // fieldlang-asm driver.s — arm64 macOS, hand-written asm
 // CONTRACT v1. Syscall choice: libSystem thin calls (_open/_read/_write/_close/_exit) — DECLARED.
+// ABI NOTE (Darwin arm64): open(const char*, int, ...) is VARIADIC. The mode
+// argument is a variadic arg and MUST be passed in an 8-byte stack slot at
+// [sp], NOT in w2. Passing it in w2 left mode uninitialised in the kernel and
+// produced files with garbage permissions (--wx------). See Lopen_out.
 // usage: fieldc in.fld out.fldj
 // bufs: 16MiB src / 16MiB tokens / 16MiB out (.bss)
 
@@ -58,8 +62,10 @@ _main:
   // open input
   ldr x0, [x19, #8]         // argv[1]
   mov w1, #O_RDONLY
-  mov w2, #0
+  sub sp, sp, #16           // variadic mode slot (unused for O_RDONLY)
+  str xzr, [sp]
   bl _open
+  add sp, sp, #16
   cmp w0, #0
   b.lt Lerr_open
   mov w21, w0
@@ -112,10 +118,10 @@ Lread_done:
   // open output
   ldr x0, [x19, #16]        // argv[2]
   mov w1, #O_WRTRC
-  mov w2, #0x1A4           // 0644
-  // Darwin arm64 variadic ABI: _open's mode argument is stack-passed.
-  sub sp, sp, #16
-  str w2, [sp]
+  // NOTE: the assembler reads `0644` as DECIMAL 644, not octal. Use 0x1A4.
+  mov x8, #0x1A4            // mode 0644 == 420 decimal
+  sub sp, sp, #16           // Darwin arm64: variadic mode goes at [sp]
+  str x8, [sp]              // full 8-byte slot: no garbage in upper half
   bl _open
   add sp, sp, #16
   cmp w0, #0
