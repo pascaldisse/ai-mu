@@ -209,7 +209,7 @@ Largs_done_have:
     uxtw x9, w9
     cmp x9, #2
     b.lo Lrej_slots_lo
-    ldr x10, [sp, #160]            // max_slots(引数、硬碼零)
+    ldr x10, [sp, #160]            // max_slots(引数、硬碼零) [MUT:slot-cap]
     cmp x9, x10
     b.hi Lrej_slots_hi
     str x9, [sp, #184]             // n_slots(硬碼零 = header 従属)
@@ -274,9 +274,9 @@ Lop_write:
     b.lo Lrej_trunc
     ldr w10, [x21, #1]
     uxtw x10, w10
-    ldr x9, [sp, #184]             // n_slots(硬碼 2 零)
+    ldr x9, [sp, #184]             // n_slots(硬碼 2 零) [MUT:slot-cap]
     cmp x10, x9
-    b.hs Lrej_slot
+    b.hs Lrej_slot                 // [MUT:slot-index]
     ldr w11, [x21, #5]
     uxtw x11, w11
     cmp x11, x24
@@ -288,7 +288,7 @@ Lop_write:
     // 宛先 = 任意の合法 slot(検査後にのみ確保 = 副作用は受理後)
     mov x0, x10
     bl Lslot_ptr                   // [MUT:slottab]
-    str x0, [sp, #112]
+    str x0, [sp, #112]             // [MUT:slot-index]
     add x14, x21, #9
     str x14, [sp, #56]
     mov x14, #0
@@ -341,9 +341,9 @@ Lstep_tick:
     add x19, x19, x0               // sat 累計 [MUT:sat]
     // 回転(旧 3-plane 意味論保存): slot0<-scratch · slot1<-旧slot0 · scratch<-旧slot1
     ldr x9, [sp, #168]
-    str x27, [x9, #0]              // [MUT:rot3]
-    str x25, [x9, #8]              // [MUT:rot3]
-    str x26, [sp, #176]
+    str x27, [x9, #0]              // [MUT:rot3] [MUT:slot-rotate]
+    str x25, [x9, #8]              // [MUT:rot3] [MUT:slot-rotate]
+    str x26, [sp, #176]            // [MUT:slot-rotate]
     add x28, x28, #1               // steps
     b Lstep_tick
 
@@ -401,18 +401,18 @@ Lcl_l:
     ldr x0, [x9, x23, lsl #3]
     cbz x0, Lcl_next               // 未確保 slot = 解放不要
     ldr x1, [sp, #200]
-    bl _munmap                     // [MUT:cleanup]
+    bl _munmap                     // [MUT:cleanup] [MUT:slot-cleanup]
 Lcl_next:
     add x23, x23, #1
     b Lcl_l
 Lcl_end:
     ldr x0, [sp, #176]
     ldr x1, [sp, #200]
-    bl _munmap                     // scratch [MUT:cleanup]
+    bl _munmap                     // scratch [MUT:cleanup] [MUT:slot-cleanup]
     ldr x0, [sp, #168]
     ldr x1, [sp, #184]
     lsl x1, x1, #3
-    bl _munmap                     // slot table [MUT:cleanup]
+    bl _munmap                     // slot table [MUT:cleanup] [MUT:slot-cleanup]
     ldr x0, [sp, #152]
     ldr x1, [sp, #144]
     bl _munmap                     // file buffer [MUT:cleanup]
@@ -501,7 +501,7 @@ Lslot_ptr:
     str x0, [sp, #208]
     ldr x11, [sp, #200]
     str x11, [sp, #136]
-    bl Larena
+    bl Larena                      // MAP_ANON = zero-init [MUT:slot-zero]
     ldr x12, [sp, #208]
     ldr x9, [sp, #168]
     str x0, [x9, x12, lsl #3]
