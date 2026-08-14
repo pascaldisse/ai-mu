@@ -624,3 +624,27 @@ KILLED  arena-cap-hardcoded    rc=8 output differs from reference     (`ldr x9,[
 **G1 の存続(Chandi 再確認)**: product 執行路は `world.rs:93-99` → `plane.rs:79-90` `wave_step`(FFT)
 ∴ fieldrun の Q30 reference stencil とは **別法**。三経路 byte 一致が示すのは
 `wave_step_reference` 意味論**内部**の整合のみであり、**product parity は非証明**。之を契約に残す。
+
+## §15 上流 `wave_step_reference` parity 許容誤差(**測定前に定む**・Ganga)
+
+射程 = `../../field/src/plane.rs:93-113`(5点 stencil, f32)対 fieldrun(Q20 cell / Q30 係数)。
+**bit 一致は要求せぬ**(固定小数 対 浮動小数 = 別数系)∴ 誤差上限を先に導出して封ずる。
+
+導出(手算・実測前):
+- Q20 量子化 ulp `u = 2^-20 = 9.5367431640625e-7`。
+- 1 tick の增幅率 `G = (|c_cur| + 4|c_lap| + |c_prev|)/2^30 = (2040216832 + 4*10737419 + 966475008)/2^30
+  = 3049633_2... 正確に = 3049638516/2^30 = 2.84040...` (≤ 2.8405 と丸めて用う)。
+- 1 tick で新たに入る誤差 `e1 ≤ u`(Q30 積 3 本の丸め ≤ 3*(u/2) と f32 側丸めを一括して u で覆う)。
+- ∴ N tick 後の絶対誤差上限 `E(N) = u * Σ_{i=0}^{N-1} G^i`。
+```
+E(1) = 9.537e-7
+E(2) = 3.663e-6
+E(3) = 1.406e-5
+E(10)= 3.36e-3    (G^N 爆発 ∴ 長走 tick で parity 主張は無意味 — 之も先に認む)
+```
+**判定律**:
+- PASS 条件 = 全胞で `|q20_value - ref_f32| ≤ E(N)`(N = 実行 tick 数)。
+- 飽和(sat≠0)を含む走は **parity 対象外**(Q20 飽和は f32 に無き非線形)。
+- 相対誤差は `max|ref|` を分母とする一つの値のみ報告(胞毎相対は 0 割 ∴ 用いぬ)。
+- 本節は **測定前** に凍結。以後 **基準の後出し改訂を禁ず**。改訂は骸+因を残して別節に。
+- **G1 は本節で閉じぬ**: product 執行路 `plane.rs:79-90` = FFT 分光 ∴ 本節が緑でも product parity は非証明のまま存続。
