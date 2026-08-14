@@ -40,6 +40,21 @@ printf "%s\n" "mutation fixture-zero-dim rejected=ok"
 if ./wave_runner all wave_vectors.bin.short >/dev/null 2>&1; then rm -f wave_vectors.bin.short; exit 1; fi
 rm -f wave_vectors.bin.short
 printf "%s\n" "mutation fixture-record-truncated rejected=ok"
+# arena頂 teeth(round11 自攻): 宣言上限 n=0x4000 は真に arena 内でなければならぬ。
+# count検査のみ緩めた probe を組立て、n=16384 は緑・n=16385 は赤 を要求。
+# 修正前(65536 arena)は n>=16360 で out guard が越境破壊され n=16384 が赤だった。
+sed 's/    cmp x10, #138/    cmp x10, x10/' wave_runner.s > bounds_probe.s
+as -arch arm64 -o bounds_probe.o bounds_probe.s
+ld -arch arm64 -o bounds_probe -e _main -lSystem bounds_probe.o wave_scalar.o wave_neon.o -syslibroot "$(xcrun --show-sdk-path)"
+mkcase() { n=$1; b=$((n*4))
+  { printf 'Q30WAVE2\000'; printf '\002\000ab'; printf '\001\000\000\000'
+    printf "$(printf '\\%03o\\%03o\\%03o\\%03o' $((n&255)) $(((n>>8)&255)) $(((n>>16)&255)) $(((n>>24)&255)))"
+    head -c 24 /dev/zero; head -c $((3*b)) /dev/zero; head -c 8 /dev/zero; printf '\000\000'; } > wave_bounds_$n.bin; }
+mkcase 16384; mkcase 16385
+./bounds_probe all wave_bounds_16384.bin >/dev/null 2>&1 || { rm -f wave_bounds_*.bin bounds_probe*; exit 1; }
+if ./bounds_probe all wave_bounds_16385.bin >/dev/null 2>&1; then rm -f wave_bounds_*.bin bounds_probe*; exit 1; fi
+rm -f wave_bounds_*.bin bounds_probe bounds_probe.o bounds_probe.s
+printf "%s\n" "arena-top n=16384 in-bounds / n=16385 rejected=ok"
 ./wave_abi_probe
 otool -tvV wave_runner > wave-otool.txt
 for m in smull.2d saddl.2d saddl2.2d sshll.2d sshll2.2d sqxtn.2s sqxtn2.4s sshr.2d shl.2d xtn.2s cmgt.2d addp.2d dup.2d ld1.4s st1.4s; do grep -qF "$m" wave-otool.txt || exit 1; done

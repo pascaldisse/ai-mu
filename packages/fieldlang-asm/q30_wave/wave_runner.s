@@ -483,13 +483,16 @@ Lexit:
 .section __DATA,__bss
 .p2align 4
 _filebuf: .space 262144
-_curbuf:  .space 65536
-_prevbuf: .space 65536
-_outbuf:  .space 65536
-_aliasbuf: .space 65536
-_aliasref: .space 65536
-_custcur:  .space 65536
-_custprev: .space 65536
+// 自攻(round11)発見: arena上限 n=0x4000 は bytes=65536 を許すが、out基址=+64・
+// 非整列経路=+1・上位guard=+65+bytes+32 故、実必要=65633 > 65536 だった(OOB書込)。
+// 宣言上限を偽らぬ為、作業arenaを 65792 (=65536+256) へ拡張する。
+_curbuf:  .space 65792
+_prevbuf: .space 65792
+_outbuf:  .space 65792
+_aliasbuf: .space 65792
+_aliasref: .space 65792
+_custcur:  .space 65792
+_custprev: .space 65792
 _cfg:     .space 32
 .section __TEXT,__cstring,cstring_literals
 Lokmsg: .asciz "wave_runner: 138 Q30WAVE2 ok\n"
