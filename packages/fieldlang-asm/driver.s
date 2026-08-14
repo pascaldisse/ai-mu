@@ -112,8 +112,12 @@ Lread_done:
   // open output
   ldr x0, [x19, #16]        // argv[2]
   mov w1, #O_WRTRC
-  mov w2, #0644
+  mov w2, #0x1A4           // 0644
+  // Darwin arm64 variadic ABI: _open's mode argument is stack-passed.
+  sub sp, sp, #16
+  str w2, [sp]
   bl _open
+  add sp, sp, #16
   cmp w0, #0
   b.lt Lerr_out
   mov w21, w0
