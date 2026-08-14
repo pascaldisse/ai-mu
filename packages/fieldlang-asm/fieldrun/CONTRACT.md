@@ -795,3 +795,58 @@ FLRO byte 一致(`63f868bc…`)」は**真**であるが、当該走は **sat=17
 之を以て「fieldrun が f32 `wave_step_reference` 意味論を 200 step 保つ」とは**言えぬ**。
 その主張の根拠は非飽和 vector(`b443807676…`・sat=0)と §17b(2) の統計のみ。
 G1(product=FFT との parity)は依然**存続**。
+
+### §15c 基準の算術訂正 + fixture 凍結(Chandi・審 Jyestha二番 RED + Rahu 独立検算に応ず)
+
+**(あ) G の訂正(骸+因)**
+```
+真: SUM = |c_cur| + 4|c_lap| + |c_prev| = 2040216832 + 42949676 + 966475008 = 3049641516
+    G   = SUM/2^30 = 2.840199988335371          ← ./coef 実走出力から導出
+骸: §15 は SUM=3049638516 · G=2.84040 と書いた = **誤和**(下3桁 641516→638516 の書き損じ)
+```
+**「旧誤係数由来か単なる誤記か」の実碼判定 = 誤記**。因: 旧誤係数(`c_cur=2040220160`,
+`c_prev=-966478272`, A9-4 で骸化)を入れても `G=2.840206` ∴ **どの係数でも 2.8404 は出ぬ**。
+∴ 旧値は係数汚染の残滓に非ず、算術の誤り。
+
+**BOUND の再導出(E(N)=u·Σ_{i<N}G^i, u=2^-20)**:
+```
+E(1)=9.536743e-07 E(2)=3.662300e-06 E(3)=1.135534e-05 E(6)=2.715191e-04 E(10)=1.770156e-02
+```
+§15b の BOUND 表は之と不整合(t4 3tick=1.406e-05 · t5 6tick=2.000e-04 · t6 10tick=3.360e-03 は
+式から出ぬ数)∴ **§15b の PASS 判定は根拠を失う**。測定値自体は棄てぬが、
+**§15b は「根拠不整合 ∴ 緑にあらず」と本節で明示的に格下げする**(閾は緩めぬ — 訂正後の
+BOUND は t4 で **より厳しく**(1.406e-05→1.135e-05)、t5/t6 では緩い。後出しの都合合わせに非ず)。
+
+**(い) fixture 凍結** — §15b の t1..t6 は生成律が commit されず **再現不能 ∴ UNVERIFIED**(審の指摘=真)。
+新門 `parity_gate.sh`(shell のみ)が fixture を**決定論的に生成**し、各走の `sha(fldj)` を吐く。
+BOUND は契約本文でなく **`./coef` 実走出力から毎回再導出**(検が算と失敗様式を共有せぬ独立路)。
+
+**(う) 一様場走 = SPECIAL** — `lap≡0` で誤差経路が退化 ∴ PASS 数に算入せぬ(v0-uniform)。
+
+**実測(生・凍結 fixture・`3e2eea9`)**:
+```
+raw     coef(実走)           c_cur=2040216832 c_lap=10737419 c_prev=-966475008
+raw     amplification          G=2.840199988335
+v0-uniform cells=4      1tick MAXABS=2.384185e-07 BOUND=9.536743e-07 MAXREF=1.900100e+00 MAXREL=1.254768e-07 sat=0 SPECIAL
+         sha(fldj)=02d1f831948eef1d9326d754597c358aa4b1a43e9981007d09598908ecbb0a2d
+v1       cells=16     1tick MAXABS=8.903444e-07 BOUND=9.536743e-07 MAXREF=2.109687e-01 MAXREL=4.220267e-06 sat=0 PASS
+         sha(fldj)=dd105c33a58be7f40a83d6049f21e31693c0e753823b2285f89641d26161e66e
+v2       cells=16     3tick MAXABS=3.207475e-06 BOUND=1.135534e-05 MAXREF=3.456257e-01 MAXREL=9.280198e-06 sat=0 PASS
+         sha(fldj)=c07d543f82ab08e0072733ca5648083688d7f4c7d8b3f10c73c75b546d20b984
+v3       cells=64     6tick MAXABS=5.654991e-06 BOUND=2.715191e-04 MAXREF=4.373482e-01 MAXREL=1.293018e-05 sat=0 PASS
+         sha(fldj)=e0e02074b6011f19ae84a7e647a42af9b2e8e216f6670448469910157420c8fa
+v4       cells=256   10tick MAXABS=8.352101e-06 BOUND=1.770156e-02 MAXREF=3.670087e-01 MAXREL=2.275723e-05 sat=0 PASS
+         sha(fldj)=9f9f9fc4d243bf44224858b3b6df0bf67555012dbeb4a8dbb34546dabaa60b68
+v5       cells=1024  10tick MAXABS=8.538365e-06 BOUND=1.770156e-02 MAXREF=3.582374e-01 MAXREL=2.383438e-05 sat=0 PASS
+         sha(fldj)=3633e5bf6f9564b8408612e13359b0319f8f6346966b779964af40e530131fe0
+green   parity-vectors         PASS=5 SPECIAL=1
+```
+**注意(誇大禁)**: v1 は `MAXABS=8.90e-07` 対 `BOUND=9.54e-07` = **余裕 7% のみ**。
+1tick の上限は u そのもの ∴ Q20 量子化の下限に張り付いている(異常でなく設計上の下限)。
+之を「余裕大」と読むな。N=1 での PASS は**辛勝**である。
+
+**(え) SKIP-ENV 伝播**: `a7_gate.sh`(fieldc/metallib 不在)· `gate.sh`(A7/A10 の rc=3 伝播)·
+`teeth_kill.sh` 段2 を **rc=3** へ統一。実測: `FIELDC=./nonexistent` で a7/gate/teeth 全て `rc=3`、
+`REPLAY=./nope` で parity `rc=3`、正常時 `rc=0`。
+
+**なお存続**: G1(product=FFT parity 非証明)· §17c の飽和限定 · N>200 未実測。
