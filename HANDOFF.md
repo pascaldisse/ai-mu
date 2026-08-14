@@ -37,11 +37,58 @@ nonsat-journal-32x32-200step b44380767643728b27d526c765d62e9e8841baccf9532dbd9c3
 parity 二走一致: `diff` 出力零(完全同一行)。
 SKIP-ENV: `FIELDC=./nonexistent` → a7/gate/teeth 全 `rc=3` · `REPLAY=./nope` → parity `rc=3`。
 
-## merge-tree(主殿 base への衝突判定・実碼込み)
+## merge-tree(主殿 base への衝突判定・訂正版)
+
+**比較対象を必ず明記せよ**(今回の混乱の根 = 「頭」とだけ書き段名 SHA を書かなかった事)。
+
+tip = `r12/integrated` 段 `db8c13f35450ee26647bd0081bab039f26d7d4cd`(訂正commit前の頭)
+base: `field/lang-asm` = `f78aaa82f1772b6cfd8006c92391b3a33b8c81c2` · `origin/field/lang-asm` = `fa07d097c5bbe00a0c29fa9a0641deeba06707df`
+
+実行(完全形・三 base 全一致):
 ```
-git merge-tree --write-tree --messages field/lang-asm        r12/integrated → tree e7e4fdb5b51574d5fd11ea8f3f76d445ffad598b  rc=0 衝突零
-git merge-tree --write-tree --messages origin/field/lang-asm r12/integrated → tree e7e4fdb5b51574d5fd11ea8f3f76d445ffad598b  rc=0 衝突零
-base: field/lang-asm=f78aaa82f1772b6cfd8006c92391b3a33b8c81c2 · origin/field/lang-asm=fa07d097c5bbe00a0c29fa9a0641deeba06707df
+git merge-tree --write-tree f78aaa82f1772b6cfd8006c92391b3a33b8c81c2 db8c13f35450ee26647bd0081bab039f26d7d4cd
+  -> 6c2b407eec07ca97b692aa4c58a6e94b02dfeb39   rc=0
+git merge-tree --write-tree origin/field/lang-asm db8c13f35450ee26647bd0081bab039f26d7d4cd
+  -> 6c2b407eec07ca97b692aa4c58a6e94b02dfeb39   rc=0
+git merge-tree --write-tree field/lang-asm        db8c13f35450ee26647bd0081bab039f26d7d4cd
+  -> 6c2b407eec07ca97b692aa4c58a6e94b02dfeb39   rc=0
+```
+∴ 衝突零=真。正しい tree = `6c2b407eec07ca97b692aa4c58a6e94b02dfeb39`(頭 `db8c13f` 基準)。
+
+**旧記載 `e7e4fdb5b51574d5fd11ea8f3f76d445ffad598b` は偽** — 実は中間段 `5c925b3` の tree(`git rev-parse 5c925b3^{tree}` = `e7e4fdb5…` で確認)。頭 `db8c13f` の tree は `6c2b407e…`(= 衝突零ゆえ merge-tree 出力と一致)。
+
+### 自己参照の罠(構造注記)
+頭が動けば tree hash も動く ∴ **この節は書いた瞬間に古くなる**。故に記載は常に「どの段 SHA を tip としたか」を伴わねば無意味。取込者は**必ず自分の手元の現頭で再実行**し、記載値は「その段での値」としてのみ読め。
+
+### 訂正commit後の再実測
+tip = `PLACEHOLDER_NEWHEAD`
+```
+PLACEHOLDER_OUT
+```
+(此の値もまた、次の commit で古くなる。上の構造注記の通り。)
+
+## archon 用 取込コマンド列(本lane は実行せず・archon 判断)
+```
+# ① base 確認(期待: 下の SHA と一致。違えば以降の値は全て無効 → 再実測せよ)
+git rev-parse field/lang-asm origin/field/lang-asm r12/integrated
+#   expect: f78aaa82f1772b6cfd8006c92391b3a33b8c81c2
+#           fa07d097c5bbe00a0c29fa9a0641deeba06707df
+#           <r12/integrated 現頭 — 記載値と異なれば ② を必ず再実行>
+
+# ② 衝突零確認(期待: tree hash 一行 + rc=0。CONFLICT 行が出れば取込中止)
+git merge-tree --write-tree field/lang-asm <r12/integrated 現頭>
+#   expect stdout: <tree hash 40桁のみ>   rc=0
+#   ( 現頭=db8c13f の時 -> 6c2b407eec07ca97b692aa4c58a6e94b02dfeb39 )
+
+# ③ merge(主殿側で実行・no-ff で系譜を残す)
+git checkout field/lang-asm
+git merge --no-ff r12/integrated -m "取込(archon): round12 統合枝 r12/integrated"
+#   expect: rc=0 · merge commit 生成 · `git rev-parse HEAD^{tree}` = ② の tree hash と一致
+git rev-parse HEAD^{tree}
+#   expect: ② と同一値(不一致 = 何かが動いた ∴ 中止して再審)
+
+# ④ 主殿側で全門実走(緑を実測してから初めて成立と書け)
+#   期待: KILLED=85 · green=43 · SURVIVED=0 · golden三本 hash 一致 · parity二走 diff 零 · SKIP-ENV rc=3
 ```
 
 ## 取込
@@ -60,3 +107,6 @@ base: field/lang-asm=f78aaa82f1772b6cfd8006c92391b3a33b8c81c2 · origin/field/la
 ## 死枝(本lane)
 - ADDENDUM を別 file のまま残す案: 死。因 = 二重管理が審の懸念そのもの。
 - `ROUND12.md` を初版のまま追記のみで済ます案: 死。因 = 本文の「三経路一致」が射程過大、追記では読み違いが残る。
+- 建(Lakshmi)`e7e4fdb5…` を「頭の merge-tree 結果」とした記載: 死。因 = 実は中間段 `5c925b3` の tree。
+- 審(Kali二番)`95a1874…` による「取込不可」判定: 死。因 = `merge-tree f78aaa8 origin/field/lang-asm` = 統合枝が式に入ってない誤コマンド。結論「取込可」は不変。
+- 両者共通の根: hash を書いても**何と何を比べたか**(base SHA / tip SHA)を書かなかった事。

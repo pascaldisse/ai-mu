@@ -55,6 +55,7 @@
 - 偽歯: Metal `reps=2`・`offset=4,28`。因=bridge ABI不変量として成立、欠陥変異に非ず。
 - `sig=16759927`共有誤読: 二重独立検算が同一誤入力を共有、同時に外れた。真sigへ訂正。
 - bc 負除算: 零方向截断、算術shift検算に不適。
+- merge-tree 二重誤り(建 `e7e4fdb5…`=中間段 `5c925b3` の tree を頭と誤記 · 審 `95a1874…`=統合枝を含まぬ `merge-tree f78aaa8 origin/field/lang-asm` で「不一致」判定): 両方死。根=**何と何を比べたか(base SHA と tip SHA)を記さなかった事**。真値 = `git merge-tree --write-tree field/lang-asm db8c13f35450ee26647bd0081bab039f26d7d4cd` -> `6c2b407eec07ca97b692aa4c58a6e94b02dfeb39` rc=0(三 base 全一致)。
 - `../fieldc`: 環境依存偽赤。fieldc不在は `rc=3(SKIP-ENV)`。
 - §17c ①案(既定振幅を下げて golden 再凍結): 棄却。因=飽和一致の検査価値喪失+回帰基準破壊。
 - §17 分類律の毎tick率 `r`: 冪則を一定率で表そうとした誤り。判別は冪指数 `p` で行う(自認・骸)。
