@@ -5,7 +5,8 @@
 //     超える入力 = rc=16(loud)、引数で上げれば受理。
 // 記号: _coef_from_header(A3) · _q20_from_bits(A2) · _fl_q30_wave_scalar(q30_wave)
 // rc: 0 成功 · 2 header短 · 3 magic · 4 version · 5 w==0 · 6 h==0 · 7 w*h溢
-//     8 w*h>上限 · 9 n_slots<2 · 10 n_slots>上限 · 12 未知tag · 13 slot>=2
+//     8 w*h>上限 · 9 n_slots<2 · 10 n_slots>上限 · 12 未知tag · 13 slot>=n_slots
+//     26 slot table 寸法溢
 //     14 op切断 · 15 len!=w*h · 16 open/read · 17 用法 · 18 出力書込失敗
 //     20 非有限payload · 21 範囲外payload · 22 非canonical · 23 不変式
 // FP/SIMD レジスタ・FP 命令 零(門が二重走査で強制)。
@@ -23,6 +24,7 @@
 .extern _fl_q30_wave_neon
 .extern _fl_wave_metal_init
 .extern _fl_q30_wave_metal
+.extern _munmap
 
 // 局所域(sp 基準、176B ; 160 = max_slots 上限[既定 1024、第6引数]):
 //   0..31  cfg{w i32,h i32,c_cur i64,c_lap i64,c_prev i64}
@@ -37,6 +39,12 @@
 //   136    arena bytes(Larena 引数)
 //   144    max_bytes(入力上限・引数 or 既定)
 //   152    file buffer ptr(mmap、静的 _filebuf の代替)
+//   168    slot table ptr(mmap、n_slots*8B、全域 NULL = 未確保 lazy)
+//   176    scratch ptr(slot table 非参加 = 別管理)
+//   184    n_slots(header 実値)
+//   192    Lslot_ptr の x30 退避(再入無し)
+//   200    slot 一枚の byte 数 = n*4
+//   208    Lslot_ptr の index 退避
 //   128    backend 函数ポインタ(既定=_fl_q30_wave_scalar · --neon で _fl_q30_wave_neon
 //          · --metal <metallib> で _fr_metal_call thunk)
 _main:
@@ -47,7 +55,7 @@ _main:
     stp x23, x24, [sp, #48]
     stp x25, x26, [sp, #64]
     stp x27, x28, [sp, #80]
-    sub sp, sp, #176               // 160 + 16(max_slots @160)
+    sub sp, sp, #224               // 208 + 16 使用(16 整列)
     mov x28, x0                    // argc
     mov x27, x1                    // argv
     // ---- backend 選択(既定=scalar、前置旗 --neon のみ) ----
@@ -204,6 +212,16 @@ Largs_done_have:
     ldr x10, [sp, #160]            // max_slots(引数、硬碼零)
     cmp x9, x10
     b.hi Lrej_slots_hi
+    str x9, [sp, #184]             // n_slots(硬碼零 = header 従属)
+    // slot table = n_slots*8B、u64 溢/isize guard
+    mov x11, #8
+    umulh x12, x9, x11
+    cbnz x12, Lrej_ovf
+    mul x11, x9, x11
+    tbnz x11, #63, Lrej_ovf
+    str x11, [sp, #136]
+    bl Larena                      // MAP_ANON = 全域 0 ∴ 全 slot 未確保印
+    str x0, [sp, #168]
 
     // ---- 係数(§2b, A3 の ABI) ----
     ldr w9, [x19, #16]
@@ -230,15 +248,12 @@ Largs_done_have:
     ldr x9, [sp, #80]
     str x9, [sp, #24]
 
-    // ---- 三 buffer(§2d)、n*4B を各々 mmap(MAP_ANON = 全域 0)----
+    // ---- slot 記憶(§2d 一般化): 一枚 = n*4B。slot は lazy、scratch のみ先行確保。
     lsl x9, x24, #2
-    str x9, [sp, #136]             // arena bytes
+    str x9, [sp, #200]             // slot 一枚の byte 数
+    str x9, [sp, #136]
     bl Larena
-    mov x25, x0                    // cur
-    bl Larena
-    mov x26, x0                    // prev
-    bl Larena
-    mov x27, x0                    // scratch
+    str x0, [sp, #176]             // scratch(別管理・table 非参加)
 
     add x21, x19, #48              // op cursor
     mov x19, #0                    // sat 累計
@@ -259,7 +274,8 @@ Lop_write:
     b.lo Lrej_trunc
     ldr w10, [x21, #1]
     uxtw x10, w10
-    cmp x10, #2
+    ldr x9, [sp, #184]             // n_slots(硬碼 2 零)
+    cmp x10, x9
     b.hs Lrej_slot
     ldr w11, [x21, #5]
     uxtw x11, w11
@@ -269,14 +285,10 @@ Lop_write:
     add x12, x12, #9
     cmp x15, x12
     b.lo Lrej_trunc
-    // 宛先 = slot0 -> cur, slot1 -> prev
-    cbz x10, Lw_dst0
-    mov x13, x26
-    b Lw_have
-Lw_dst0:
-    mov x13, x25
-Lw_have:
-    str x13, [sp, #112]
+    // 宛先 = 任意の合法 slot(検査後にのみ確保 = 副作用は受理後)
+    mov x0, x10
+    bl Lslot_ptr                   // [MUT:slottab]
+    str x0, [sp, #112]
     add x14, x21, #9
     str x14, [sp, #56]
     mov x14, #0
@@ -313,22 +325,33 @@ Lstep_tick:
     cbz x10, Lop
     sub x10, x10, #1
     str x10, [sp, #32]
+    mov x0, #0
+    bl Lslot_ptr                   // cur = slot0(未書 = zero-init)
+    mov x25, x0
+    mov x0, #1
+    bl Lslot_ptr                   // prev = slot1
+    mov x26, x0
+    ldr x27, [sp, #176]            // out = scratch(別管理ヺlias 禁) [MUT:alias]
     mov x0, sp                     // cfg
     mov x1, x25                    // cur
     mov x2, x26                    // prev
-    mov x3, x27                    // out = scratch(alias 禁) [MUT:alias]
+    mov x3, x27
     ldr x9, [sp, #128]             // backend(scalar 或 neon、黙し落ち無)
     blr x9
     add x19, x19, x0               // sat 累計 [MUT:sat]
-    // 三者回転: (cur,prev,scratch) <- (scratch,cur,prev)
-    mov x9, x27
-    mov x27, x26                   // [MUT:rot3]
-    mov x26, x25                   // [MUT:rot3]
-    mov x25, x9
+    // 回転(旧 3-plane 意味論保存): slot0<-scratch · slot1<-旧slot0 · scratch<-旧slot1
+    ldr x9, [sp, #168]
+    str x27, [x9, #0]              // [MUT:rot3]
+    str x25, [x9, #8]              // [MUT:rot3]
+    str x26, [sp, #176]
     add x28, x28, #1               // steps
     b Lstep_tick
 
 Ldone:
+    // canonical 出力 = slot0(op 無しでも zero-init で具現化)
+    mov x0, #0
+    bl Lslot_ptr
+    mov x25, x0
     // ---- FLRO v0 書出(§2c) ----
     adrp x9, _flro@PAGE
     add x9, x9, _flro@PAGEOFF
@@ -368,6 +391,31 @@ Ldone:
     b.ne Lwritefail
     mov x0, x20
     bl _close
+    // ---- mmap custody: slot 全枚 + scratch + table + file buffer を munmap ----
+    mov x23, #0
+Lcl_l:
+    ldr x24, [sp, #184]
+    cmp x23, x24
+    b.hs Lcl_end
+    ldr x9, [sp, #168]
+    ldr x0, [x9, x23, lsl #3]
+    cbz x0, Lcl_next               // 未確保 slot = 解放不要
+    ldr x1, [sp, #200]
+    bl _munmap                     // [MUT:cleanup]
+Lcl_next:
+    add x23, x23, #1
+    b Lcl_l
+Lcl_end:
+    ldr x0, [sp, #176]
+    ldr x1, [sp, #200]
+    bl _munmap                     // scratch [MUT:cleanup]
+    ldr x0, [sp, #168]
+    ldr x1, [sp, #184]
+    lsl x1, x1, #3
+    bl _munmap                     // slot table [MUT:cleanup]
+    ldr x0, [sp, #152]
+    ldr x1, [sp, #144]
+    bl _munmap                     // file buffer [MUT:cleanup]
     mov x0, #0
     bl _exit
 
@@ -395,6 +443,8 @@ Lrej_slots_hi:  mov x0, #10
 Lrej_tag:       mov x0, #12
     b Lreject
 Lrej_slot:      mov x0, #13
+    b Lreject
+Lrej_ovf:       mov x0, #26
     b Lreject
 Lrej_trunc:     mov x0, #14
     b Lreject
@@ -438,6 +488,28 @@ _fr_metal_call:
     cmn x0, #1
     b.eq Lmetal_fail               // [MUT:mfail] -1 は決して黙殺せぬ
     ldp x29, x30, [sp], #16
+    ret
+
+// ---- Lslot_ptr: x0 = slot index(合法検査済)-> x0 = ptr。
+//      未確保なら n*4B を mmap(MAP_ANON = zero-init)し table へ登録。
+//      非再入(x30 は frame 退避)・sp 不変 ∴ Larena の frame 前提を壊さぬ。
+Lslot_ptr:
+    str x30, [sp, #192]
+    ldr x9, [sp, #168]
+    ldr x10, [x9, x0, lsl #3]
+    cbnz x10, Lsp_have
+    str x0, [sp, #208]
+    ldr x11, [sp, #200]
+    str x11, [sp, #136]
+    bl Larena
+    ldr x12, [sp, #208]
+    ldr x9, [sp, #168]
+    str x0, [x9, x12, lsl #3]
+    ldr x30, [sp, #192]
+    ret
+Lsp_have:
+    mov x0, x10
+    ldr x30, [sp, #192]
     ret
 
 // ---- arena 一枚 = mmap(NULL, bytes, RW, ANON|PRIVATE, -1, 0)。失敗 = rc=19 loud ----

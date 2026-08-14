@@ -6,7 +6,7 @@
 // 成功 rc=0 + stdout 一行。 拒否 = 検査毎に別 rc(下表)+ stderr 一行。
 //   2 header短 · 3 magic · 4 version · 5 w==0 · 6 h==0 · 7 w*h溢 · 8 w*h>上限
 //   9 n_slots<2 · 10 n_slots>上限 · 11 物理5値 非canonical · 12 未知tag
-//   13 slot>=2 · 14 op切断/末尾余剰 · 15 WriteRaw len != w*h
+//   13 slot>=n_slots · 14 op切断/末尾余剰 · 15 WriteRaw len != w*h
 //   16 open/read 失敗 · 17 用法
 .subsections_via_symbols
 .p2align 2
@@ -155,7 +155,7 @@ Lop_write:
     b.lo Lrej_trunc
     ldr w10, [x21, #1]             // slot u32
     uxtw x10, w10
-    cmp x10, #2
+    cmp x10, x27                   // n_slots 従属(硬碼 2 零)
     b.hs Lrej_slot
     ldr w11, [x21, #5]             // len u32(cell 数)
     uxtw x11, w11
