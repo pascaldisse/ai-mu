@@ -38,12 +38,15 @@ msg_emit:  .ascii "fieldc: emit error\n"
 .equ msg_emit_len, . - msg_emit
 msg_out:   .ascii "fieldc: cannot write output\n"
 .equ msg_out_len, . - msg_out
+msg_toolong: .ascii "fieldc: input too large (max 16MiB)\n"
+.equ msg_toolong_len, . - msg_toolong
 
 .bss
 .p2align 4
 _src_buf: .space BUFSZ
 _tok_buf: .space BUFSZ
 _out_buf: .space BUFSZ
+_probe_buf: .space 16       // 1-byte EOF probe (padded for alignment)
 
 .text
 .globl _main
@@ -79,13 +82,27 @@ Lread_loop:
   add  x1, x1, x20
   mov  x2, #BUFSZ
   sub  x2, x2, x20
-  cbz  x2, Lread_done       // buf full
+  cbz  x2, Lread_full       // buf full → probe for extra bytes
   bl _read
   cmp x0, #0
   b.lt Lerr_read
   b.eq Lread_done
   add x20, x20, x0
   b Lread_loop
+
+// Buffer full at exactly BUFSZ bytes. The input may be exactly 16MiB (legal)
+// or larger (must be rejected, never silently truncated). One 1-byte read
+// decides: EOF (0) = exact fit, accept; >0 = extra data, Lerr_toolong.
+Lread_full:
+  mov w0, w21
+  adrp x1, _probe_buf@PAGE
+  add  x1, x1, _probe_buf@PAGEOFF
+  mov  x2, #1
+  bl _read
+  cmp x0, #0
+  b.lt Lerr_read
+  b.gt Lerr_toolong
+  // fallthrough: x0 == 0 → EOF, exact BUFSZ input accepted
 Lread_done:
   mov w0, w21
   bl _close
@@ -164,6 +181,7 @@ ERRPATH Lerr_read, msg_read,  msg_read_len
 ERRPATH Lerr_lex,  msg_lex,   msg_lex_len
 ERRPATH Lerr_emit, msg_emit,  msg_emit_len
 ERRPATH Lerr_out,  msg_out,   msg_out_len
+ERRPATH Lerr_toolong, msg_toolong, msg_toolong_len
 
 Lfail:
   mov w0, #2                // stderr
