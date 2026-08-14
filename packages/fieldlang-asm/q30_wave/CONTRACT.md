@@ -55,3 +55,26 @@ kill証明(實機 M1 Pro、base 8a1d244 の runner と本runnerの差):
 --- new  runner vs trailing:   wave_runner: failure           new_rc=1    ← RED
 ```
 門teeth: fixture-trailing / fixture-truncated / fixture-dims-overflow / fixture-zero-dim / fixture-record-truncated。
+
+## round11 自攻(Vishnu 自作を他人として攻む)の結果
+
+kill 3・survive 3。修正済:
+1. **arena頂 OOB(真の欠陥)**: `n<=0x4000` を許すが out 基址=+64・非整列経路=+1・上位guard=+65+bytes+32
+   \∴ 実必要 65633 > 65536 arena。n>=16360 で guard を越境破壊していた。作業arenaを 65792 へ拡張。
+   歯: `arena-top` (n=16384 緑 / n=16385 赤、count緩和 probe 上で)。
+2. **段1 teeth の空虚**: trailing/truncated/dims/zero/record-truncated の5歯は
+   末端一致検査 + `cases==138` に吸収され、`Lneed` と u64 checked mul を **殺していなかった**
+   (Lneed を `ret` のみに弱めても門は緑だった)。単独露出歯を追加:
+   `remaining-length tooth`(need_probe=末端検査緩和) / `u64-checked dims tooth`(32bit mul へ戻すと **SIGSEGV**)
+   / `arena-full short-read tooth`(bounds_probe)。
+3. **Metal CONTRACT の嘆願**: `q30_wave_metal` に host bridge も gate も無い \∴ 記述を要求(UNVERIFIED)へ訂正。
+   `.bak.s`(作業残骸 496行)を製品木より削除。
+
+survive(攻めたが破れず):
+- 負 w/h・`w=1,h=2^30`・`w=INT_MIN`・65536x65536: すべて拒否。
+- cursor==file end・w/h 欠落・名長のみ・9byte file: すべて拒否。
+- x16/x17 規約: `bl Lneed` は _main 本体3箇所のみ、x30 は _main で未使用、
+  x9/x11/x12/x13 は Lneed を跨いで生存し Lneed は触れぬ \∴ 規約正当。
+
+死枝: `cbz x13, Lfail`(product==0) は **到達不能** — `w>=1 && h>=1 && w,h<=2^31` \∴ product>=1。
+帯として残すが、これは歯を持たぬ(死枝と明記)。

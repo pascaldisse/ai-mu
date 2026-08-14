@@ -18,7 +18,13 @@ Rust/C/Swift/Python source は product closure に禁。
 `Params` = `uint width, height; uint c_cur_lo; int c_cur_hi; uint c_lap_lo; int c_lap_hi;
 uint c_prev_lo; int c_prev_hi;` — 係数 i64 は lo/hi 対で渡す(shader は native 64-bit 整数を用いぬ)。
 
-Dispatch: `dispatchThreads(count,1,1)` tpg `(64,1,1)`。`count` = **host 側 u64 checked** `width*height`(u32 上限超=拒否)を Params へ渡す。kernel 自身も `gid >= count` を守り、`width*height` の product 一致を検す。
+Dispatch: `dispatchThreads(width*height,1,1)` tpg `(64,1,1)`。kernel は `n = w*h` を **u32** で算し `gid >= n` を守るのみ
+(現 `wave_q30.metal` 87-89 行 = 實態)。`Params` に `count` field は **無い**。
+
+> **UNVERIFIED / 未実装(round11 自攻で摘出)**: 本 dir には kernel と本書のみ有り、host bridge も runner も gate も **存在せぬ**。
+> 故 `width*height` の u64 checked は **host 側の未履行要求**であり、實装された事実ではない。
+> kernel の `n = w*h` は u32 wrap する ∴ host が u64 checked(u32 上限超=拒否)を果たさぬ限り
+> `gid` guard は空になり得る。この一行は **要求**であり記述ではない。
 Encoder offset 非零 可(4B 倍数、Metal 規約)。門は byte offset `0/4/28` を全走。
 
 ## Lane law（受理済 scalar/NEON と同一）
@@ -32,6 +38,8 @@ Encoder offset 非零 可(4B 倍数、Metal 規約)。門は byte offset `0/4/28
 入力不変: `cur`/`prev` は 1 byte も改変せぬ(`device const`)。書込は `out[0..w*h)` のみ。
 
 ## 要求門（bridge/runner atom で実装）
+
+(以下すべて **未実装 = UNVERIFIED**。實行された門は q30_wave(CPU)側のみ。)
 
 - 凍結 `../q30_wave/wave_vectors.bin` digest 厳密 → **138** vectors(Q30WAVE2 wire, i64係数 `c_cur=±2^31`・`c_lap=±2^29`・lap極値を含む)を audit runner が**独立 decode**
 - decode は各record + 全file の remaining-length を厳密検証(truncated/trailing/malformed=赤)、`width*height` は **u64 checked**(zero/negative/arena上限=拒否)
