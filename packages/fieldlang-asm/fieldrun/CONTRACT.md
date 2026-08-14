@@ -509,3 +509,45 @@ Vishnu が同時に指摘した G1(FFT `wave_step` との bit 一致は主張不
 
 UNVERIFIED: A8(§3d 変異一括表)· A9(上流 D1/G2 修正)= 未着手。
 FLRO cell endian は host LE ∴ big-endian host 未検。`--metal` は arm64 macOS 実機のみ。
+
+## 15. A8 実装記(Akasha)
+
+`teeth_kill.sh`(shell のみ・新規 asm 零)。用 = `teeth_kill.sh [--new-only]`。
+段1 = §3d **残余変異**を `fieldrun.s` へ **各々単独** sed 適用 → 再 as/ld → 同一入力で無変異と比較。
+段2 = `gate.sh`(A1..A7)を実走し `KILLED`/`green` 行を採取 → **一枚表**へ集約。
+`gate.sh` からは **呼ばぬ**(段2 が `gate.sh` を呼ぶ故、連結すると無限再帰)∴ A8 は独立門。
+
+**採点律**: 無変異 fieldrun の同一入力 rc/FLRO byte を基準とし、変異体が **観測上乖離**(rc 相違
+或 出力 byte 相違)すれば KILLED。基準と同一 = SURVIVED = 門赤。
+
+**段1 実測(生)**:
+```
+raw     baseline rc: truncation=14 trailing=14 bad-tag=12 bad-len=15 wh-32bit=8
+KILLED  truncation-check-removed   baseline rc=14 -> mutant rc=12  fieldrun reject code=12
+KILLED  trailing-byte-check-removed baseline rc=14 -> mutant rc=12  fieldrun reject code=12
+KILLED  bad-tag-check-removed      baseline rc=12 -> mutant rc=0
+KILLED  bad-len-check-removed      baseline rc=15 -> mutant rc=12  fieldrun reject code=12
+KILLED  wh-32bit-multiply          baseline rc=8 -> mutant rc=15  fieldrun reject code=15
+green   backend-forced-failure     rc=24 出力 file 零 (metal NSError: library not found)
+KILLED  metal-init-check-removed   baseline rc=24 -> mutant rc=25  metal NSError: library not found
+```
+段2 合計: **KILLED=77 green=36 SURVIVED=0**、`gate: fieldrun A8 (teeth_kill 一括表) OK`。
+
+**自省(隠さぬ)— 歯の強度に段差がある**:
+`truncation` / `trailing-byte` / `bad-len` の三変異は rc=0 へは**落ちぬ**。当該検査を潰しても
+**別の検査**(未知 tag rc=12)が捕える = 多重防御。∴ 之等の歯が実証するのは
+「当該検査が唯一の防壁」ではなく「当該検査を外すと **観測上の rc が変わる**(誤分類が起きる)」。
+不正入力が rc=0 で通る歯は `bad-tag-check-removed`(rc=0)のみ。**弱い主張と強い主張を混ぜぬ**為に
+本節に明記する。真に強い版(rc=0 まで抜ける)を得るには複数検査の同時除去が要り、
+之は「各々単独適用」の要件と衝突する ∴ **単独適用を優先**した。
+
+**死枝(因つき)**:
+- `rc=7`(`w*h` u64 溢れ)の歯 = **到達不能**。wire の w,h は u32 ∴ 積 < 2^64、`umulh` は常に 0。
+  §8(Brahma)の判定を踏襲し、`wh-32bit-multiply`(64bit→32bit 弱化 + 65536^2 wrap)を代替の歯に据えた。
+- `mul` 除去のみの歯(`cbnz x9, Lrej_mul` を nop 化)= 上と同理由で観測不能 ∴ 立てず。
+- FLRO cell の big-endian 歯 = host が LE のみ ∴ **実測不能**(A4 からの継続 UNVERIFIED)。
+
+既存門の緑維持(本 lane 実測 rc=0): `fieldrun/gate.sh` · `../gate.sh` · `../q30_wave/gate.sh` ·
+`../q30_wave_metal/gate.sh`。
+
+UNVERIFIED: A9(上流 D1 `寫 n==w*h` 生産側検査 + G2 十進注釈訂正)= **未着手**。
