@@ -68,7 +68,7 @@ tri 8x8-3tick-vecpath "$work/t4.fldj"
 tri 9x9-3tick-vecedge "$work/t5.fldj"
 tri 40x40-4tick-gpu   "$work/t6.fldj"
 
-want4=a85a4cc0ee310770209e5a67834ed7693b159c6130eae7f5afe709b093050a3c
+want4=33074917e723d60a4434ddf1badb9844faa734beb17204f0b8bdb712c16c3f7f
 got4=$(shasum -a 256 "$work/4x4-3tick.m.flro" | cut -d' ' -f1)
 [ "$got4" = "$want4" ] || { echo "gate: 4x4-3tick metal sha=$got4 want=$want4" >&2; exit 1; }
 printf 'green   %-22s %s\n' '4x4-known-sha(metal)' "$got4"

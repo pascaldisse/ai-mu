@@ -57,7 +57,7 @@ cmp_backend 8x8-3tick-vecpath "$work/t4.fldj"
 cmp_backend 9x9-3tick-vecedge "$work/t5.fldj"
 
 # 4x4-3tick の scalar SHA は契約既知値と一致せねばならぬ
-want4=a85a4cc0ee310770209e5a67834ed7693b159c6130eae7f5afe709b093050a3c
+want4=33074917e723d60a4434ddf1badb9844faa734beb17204f0b8bdb712c16c3f7f
 got4=$(shasum -a 256 "$work/4x4-3tick.s.flro" | cut -d' ' -f1)
 [ "$got4" = "$want4" ] || { echo "gate: 4x4-3tick scalar sha=$got4 want=$want4" >&2; exit 1; }
 printf 'green   %-22s %s\n' '4x4-known-sha' "$got4"

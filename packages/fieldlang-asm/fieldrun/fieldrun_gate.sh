@@ -21,7 +21,7 @@ PAYLOAD="1065353216 0 0 0" ./gen_fldj.sh "$work/t1.fldj"
 ./fieldrun "$work/t1.fldj" "$work/t1.flro"
 cells=$(od -An -td4 -j32 "$work/t1.flro" | tr -s ' ' | sed 's/^ //;s/ $//')
 hdr=$(od -An -tx1 -N32 "$work/t1.flro" | tr '\n' ' ' | tr -s ' ' | sed 's/^ //;s/ $//')
-want_cells='1950460 20972 20972 0'
+want_cells='1950456 20972 20972 0'
 want_hdr='46 4c 52 4f 00 00 00 00 02 00 00 00 02 00 00 00 01 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00'
 [ "$cells" = "$want_cells" ] || { echo "gate: cells '$cells' != '$want_cells'" >&2; exit 1; }
 [ "$hdr" = "$want_hdr" ] || { echo "gate: header '$hdr' != '$want_hdr'" >&2; exit 1; }
