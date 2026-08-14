@@ -265,3 +265,54 @@ fn journal_identical_sequences_byte_identical_files() {
     let _ = std::fs::remove_file(&p1);
     let _ = std::fs::remove_file(&p2);
 }
+
+// ---------------------------------------------------------------- hostile slot-header/wire (Kali)
+// Journal is an untrusted wire: reject before allocation/replay, never truncate usize→u32.
+
+#[test]
+fn journal_rejects_reserved_slot_counts_and_usize_truncation() {
+    let dir = fresh_dir("slot_header_reject");
+    let (cfg, params) = sample_cfg_params();
+    for n_slots in [0usize, 1usize] {
+        let path = jpath(&dir, &format!("n_slots_{n_slots}.fldj"));
+        assert!(
+            Journal::create(&path, cfg, &params, n_slots).is_err(),
+            "n_slots={n_slots} must reject before writing a replayable header"
+        );
+        assert!(!path.exists(), "rejected n_slots={n_slots} must leave no journal");
+    }
+    if usize::BITS > 32 {
+        let path = jpath(&dir, "n_slots_u32_trunc.fldj");
+        let n_slots = (u32::MAX as usize) + 1;
+        assert!(
+            Journal::create(&path, cfg, &params, n_slots).is_err(),
+            "usize n_slots > u32::MAX must reject, not truncate to zero on wire"
+        );
+        assert!(!path.exists(), "truncation reject must leave no journal");
+    }
+    if usize::BITS > 33 {
+        let path = jpath(&dir, "slot_times_d_overflow.fldj");
+        let huge_cfg = FieldConfig::new(1usize << 32, 2);
+        assert!(
+            Journal::create(&path, huge_cfg, &params, u32::MAX as usize).is_err(),
+            "n_slots*d beyond usize must reject before header dimensions/slot count truncate"
+        );
+        assert!(!path.exists(), "n_slots*d reject must leave no journal");
+    }
+}
+
+#[test]
+fn journal_rejects_writeraw_slot_equal_to_n_slots() {
+    let dir = fresh_dir("slot_oob_reject");
+    let path = jpath(&dir, "writeraw_slot_eq_n_slots.fldj");
+    let (cfg, params) = sample_cfg_params();
+    let n_slots = 3usize;
+    let mut j = Journal::create(&path, cfg, &params, n_slots).unwrap();
+    j.append(&Op::WriteRaw { slot: n_slots as u32, data_bits: vec![0; cfg.d()] });
+    j.flush().unwrap();
+    assert!(
+        Journal::read_all(&path).is_err(),
+        "WriteRaw slot==n_slots must reject during wire decode, before World/Store indexing"
+    );
+    let _ = std::fs::remove_file(&path);
+}
