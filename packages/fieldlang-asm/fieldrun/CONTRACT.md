@@ -796,6 +796,9 @@ FLRO byte 一致(`63f868bc…`)」は**真**であるが、当該走は **sat=17
 その主張の根拠は非飽和 vector(`b443807676…`・sat=0)と §17b(2) の統計のみ。
 G1(product=FFT との parity)は依然**存続**。
 
+**合流記(Lakshmi・`r12/integrated`)**: 本節の総括向け訂正は旧 `ROUND12_SAT_ADDENDUM.md` に別置していたが、
+`ROUND12.md` 本文へ合流させ当該 file を廃した(二重管理終)。訂正の原典は本節 §17c と §17b。
+
 ### §15c 基準の算術訂正 + fixture 凍結(Chandi・審 Jyestha二番 RED + Rahu 独立検算に応ず)
 
 **(あ) G の訂正(骸+因)**
