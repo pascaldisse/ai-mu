@@ -14,6 +14,28 @@ use crate::plane::{WaveKernel, WaveParams};
 use crate::store::Store;
 use crate::{FieldConfig, Slice};
 
+/// Recoverable op-application failure. A malformed journal (e.g. a `寫`/WriteRaw
+/// whose payload length != d = w*h) is INPUT, not a bug — replay must return it,
+/// never panic. Producer side rejects it too (fieldc emit.s, code -5).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ApplyError {
+    /// WriteRaw payload length mismatch: got vs required d.
+    WriteRawLen { slot: u32, got: usize, want: usize },
+}
+
+impl core::fmt::Display for ApplyError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            ApplyError::WriteRawLen { slot, got, want } => write!(
+                f,
+                "WriteRaw slot {slot}: payload is {got} bits, must be d = {want} bits"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for ApplyError {}
+
 pub struct World {
     pub cfg: FieldConfig,
     pub params: WaveParams,
@@ -32,7 +54,13 @@ impl World {
     }
 
     /// The single mutation door. Semantics per journal::Op docs.
+    /// Panics on malformed ops; prefer [`World::try_apply`] for untrusted input.
     pub fn apply(&mut self, op: &Op) {
+        self.try_apply(op).expect("World::apply on malformed op")
+    }
+
+    /// Fallible mutation door: malformed input → Err, never panic.
+    pub fn try_apply(&mut self, op: &Op) -> Result<(), ApplyError> {
         match op {
             Op::SeedAtom { slot, seed } => {
                 // store[slot] = atoms::seeded_atom(seed)
@@ -75,13 +103,20 @@ impl World {
             }
             Op::WriteRaw { slot, data_bits } => {
                 // store[slot] = raw f32-bits row
-                assert_eq!(data_bits.len(), self.cfg.d(), "WriteRaw payload must be d bits");
+                if data_bits.len() != self.cfg.d() {
+                    return Err(ApplyError::WriteRawLen {
+                        slot: *slot,
+                        got: data_bits.len(),
+                        want: self.cfg.d(),
+                    });
+                }
                 let row = self.store.row_mut(*slot as usize);
                 for (dst, bits) in row.iter_mut().zip(data_bits) {
                     *dst = f32::from_bits(*bits);
                 }
             }
         }
+        Ok(())
     }
 
     /// One field tick = wave_step on slots 0/1. HOT PATH: 120fps floor.
@@ -101,11 +136,21 @@ impl World {
 
     /// Bit-exact replay: new world, apply all ops. Determinism gate target.
     pub fn replay(cfg: FieldConfig, params: WaveParams, n_slots: usize, ops: &[Op]) -> Self {
+        World::try_replay(cfg, params, n_slots, ops).expect("World::replay on malformed journal")
+    }
+
+    /// Fallible replay: a malformed journal returns Err instead of panicking.
+    pub fn try_replay(
+        cfg: FieldConfig,
+        params: WaveParams,
+        n_slots: usize,
+        ops: &[Op],
+    ) -> Result<Self, ApplyError> {
         let mut w = World::new(cfg, params, n_slots);
         for op in ops {
-            w.apply(op);
+            w.try_apply(op)?;
         }
-        w
+        Ok(w)
     }
 
     pub fn cur(&self) -> Slice {

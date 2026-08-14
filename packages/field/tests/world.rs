@@ -7,7 +7,7 @@ use field::journal::Op;
 use field::ops;
 use field::plane::WaveParams;
 use field::store::RESERVED_SLOTS;
-use field::world::World;
+use field::world::{ApplyError, World};
 use field::{FieldConfig, Slice};
 
 fn cfg() -> FieldConfig {
@@ -186,4 +186,40 @@ fn probe_scans_free_slots_only_and_is_deterministic() {
     for (slot, _score) in &r1 {
         assert!(*slot >= RESERVED_SLOTS, "probe must not scan reserved plane slots");
     }
+}
+
+// ------------------------------------------------- A9: malformed input = Err
+
+#[test]
+fn write_raw_wrong_length_returns_err_not_panic() {
+    let mut w = world();
+    let d = w.cfg.d();
+    // n != w*h (short by one) — the exact hole fieldc now rejects at emit time.
+    let short = Op::WriteRaw { slot: 2, data_bits: vec![0u32; d - 1] };
+    let long = Op::WriteRaw { slot: 2, data_bits: vec![0u32; d + 1] };
+    assert_eq!(
+        w.try_apply(&short),
+        Err(ApplyError::WriteRawLen { slot: 2, got: d - 1, want: d }),
+        "short WriteRaw must be a recoverable Err"
+    );
+    assert!(matches!(w.try_apply(&long), Err(ApplyError::WriteRawLen { .. })));
+    // World stays usable after the error (recoverable, not poisoned).
+    assert!(w.try_apply(&Op::SeedAtom { slot: 2, seed: 5 }).is_ok());
+    // full-length payload is accepted
+    let full = Op::WriteRaw { slot: 3, data_bits: vec![0u32; d] };
+    assert!(w.try_apply(&full).is_ok());
+}
+
+#[test]
+fn try_replay_of_malformed_journal_returns_err() {
+    let ops_bad = vec![
+        Op::SeedAtom { slot: 2, seed: 1 },
+        Op::WriteRaw { slot: 3, data_bits: vec![0u32; 3] },
+    ];
+    let r = World::try_replay(cfg(), WaveParams::default(), 16, &ops_bad);
+    assert!(r.is_err(), "malformed journal must not panic and must not succeed");
+    assert_eq!(
+        r.err(),
+        Some(ApplyError::WriteRawLen { slot: 3, got: 3, want: cfg().d() })
+    );
 }

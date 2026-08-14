@@ -58,13 +58,26 @@ int main(void) {
       *p++=4; memcpy(p,(uint32_t[]){5,3,4},12);p+=12;
       check("t3_ops", _fl_emit(t,14,buf,sizeof buf,&defaults), p-exp, buf, exp); }
 
-    /* T4: variable length: 束 9 3 1 2 3 · 寫 2 2 100 200 */
-    { Tok t[] = {{5,0},{7,9},{7,3},{7,1},{7,2},{7,3},
-                 {6,0},{7,2},{7,2},{7,100},{7,200},{0,0}};
-      hdr_default(exp); uint8_t *p = exp+48;
+    /* T4: variable length: 界 2 2 16 42 · 束 9 3 1 2 3 · 寫 2 4 100 200 300 400
+     *     (寫 n MUST equal w*h — hence the 2x2 界) */
+    { Tok t[] = {{9,0},{7,2},{7,2},{7,16},{7,42},
+                 {5,0},{7,9},{7,3},{7,1},{7,2},{7,3},
+                 {6,0},{7,2},{7,4},{7,100},{7,200},{7,300},{7,400},{0,0}};
+      hdr_default(exp); ((uint32_t*)exp)[2]=2; ((uint32_t*)exp)[3]=2;
+      uint8_t *p = exp+48;
       *p++=5; memcpy(p,(uint32_t[]){9,3,1,2,3},20);p+=20;
-      *p++=6; memcpy(p,(uint32_t[]){2,2,100,200},16);p+=16;
-      check("t4_varlen", _fl_emit(t,12,buf,sizeof buf,&defaults), p-exp, buf, exp); }
+      *p++=6; memcpy(p,(uint32_t[]){2,4,100,200,300,400},24);p+=24;
+      check("t4_varlen", _fl_emit(t,19,buf,sizeof buf,&defaults), p-exp, buf, exp); }
+
+    /* T4b: 寫 shape mismatch (n != w*h) → -5 ; matching n → accepted */
+    { Tok bad[] = {{9,0},{7,2},{7,2},{7,16},{7,42},
+                   {6,0},{7,0},{7,3},{7,1},{7,2},{7,3},{0,0}};
+      long r=_fl_emit(bad,12,buf,sizeof buf,&defaults);
+      printf("%s t4b_shape_mismatch (%ld)\n", r==-5?"PASS":"FAIL", r); if(r!=-5)fails++;
+      Tok ok[] = {{9,0},{7,2},{7,2},{7,16},{7,42},
+                  {6,0},{7,0},{7,4},{7,1},{7,2},{7,3},{7,4},{0,0}};
+      r=_fl_emit(ok,13,buf,sizeof buf,&defaults);
+      printf("%s t4b_shape_ok (%ld)\n", r==48+1+24?"PASS":"FAIL", r); if(r!=48+1+24)fails++; }
 
     /* T5: syntax errors → -1 */
     { Tok a[] = {{7,5},{0,0}};                 /* bare INT at op position */

@@ -14,6 +14,12 @@ esac
 
 ./build.sh
 
+# fieldc 未生成 = 環境事由 ∴ 検査失敗(rc=1)と区別して **明示 rc=3** で落とす(偽赤禁)。
+if [ ! -x "$FIELDC" ]; then
+  echo "gate: SKIP-ENV fieldc not built at '$FIELDC' (build.sh が生成せず) — 検査未実施 rc=3" >&2
+  exit 3
+fi
+
 check_example() {
   name=$1
   golden=$2
@@ -85,6 +91,24 @@ check_size_boundary() {
   printf 'boundary existing-output preserved=ok\n'
 }
 
+check_shape_pair() {
+  # mismatch: n=3 != w*h=4 -> rc 1, no output file
+  printf '界 2 2 16 42\n寫 0 3 1 2 3\n' >"$work/shape_bad.fld"
+  if "$FIELDC" "$work/shape_bad.fld" "$work/shape_bad.fldj" 2>"$work/shape_bad.err"; then
+    echo 'gate: 寫 n!=w*h accepted' >&2; exit 1
+  else
+    rc=$?
+  fi
+  [ "$rc" -eq 1 ] || { echo "gate: shape mismatch rc=$rc, expected 1" >&2; exit 1; }
+  [ ! -e "$work/shape_bad.fldj" ] || { echo 'gate: shape mismatch created output' >&2; exit 1; }
+  # match: n=4 == w*h=4 -> rc 0, output written
+  printf '界 2 2 16 42\n寫 0 4 1 2 3 4\n' >"$work/shape_ok.fld"
+  "$FIELDC" "$work/shape_ok.fld" "$work/shape_ok.fldj" || {
+    echo 'gate: full-plane 寫 rejected' >&2; exit 1; }
+  [ -s "$work/shape_ok.fldj" ] || { echo 'gate: full-plane 寫 wrote nothing' >&2; exit 1; }
+  printf 'shape 寫 n!=w*h rc=1 rejected=ok · n==w*h rc=0 accepted=ok\n'
+}
+
 check_oversize() {
   name=$1
   if "$FIELDC" "$work/$name.fld" "$work/$name.fldj" >"$work/$name.out" 2>"$work/$name.err"; then
@@ -106,6 +130,9 @@ check_reject range '種 4294967296 1\n'
 check_reject missing_arg '種 1\n'
 check_reject extra_arg '歩 1 2\n'
 check_reject invalid_byte "$(printf '\377')"
+# D1 producer side: 寫 n MUST equal w*h (full plane) — mismatch is rejected here,
+# not left for the consumer to panic on.
+check_shape_pair
 check_size_boundary
 
 echo 'gate: fieldc assembly closure OK'

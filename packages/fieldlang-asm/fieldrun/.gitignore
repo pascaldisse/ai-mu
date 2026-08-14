@@ -1,0 +1,11 @@
+fldj_parse
+*.o
+fldj-gate.*
+q20_conv
+q20-gate.*
+coef
+coef-gate.*
+fieldrun
+fr-gate.*
+q20_conv_lib.s
+coef_lib.s
