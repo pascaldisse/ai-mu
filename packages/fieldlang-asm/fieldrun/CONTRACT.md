@@ -648,3 +648,24 @@ E(10)= 3.36e-3    (G^N 爆発 ∴ 長走 tick で parity 主張は無意味 — 
 - 相対誤差は `max|ref|` を分母とする一つの値のみ報告(胞毎相対は 0 割 ∴ 用いぬ)。
 - 本節は **測定前** に凍結。以後 **基準の後出し改訂を禁ず**。改訂は骸+因を残して別節に。
 - **G1 は本節で閉じぬ**: product 執行路 `plane.rs:79-90` = FFT 分光 ∴ 本節が緑でも product parity は非証明のまま存続。
+
+### §15b parity 実測(Ganga・§15 の基準は測定前に凍結済)
+
+経路: `gen_fldj.sh` → `./fieldrun`(Q20/Q30 手ARM64)対 `cargo run -p field --example replay_fldj`
+の **`FLDJ_REF=1` 分岐**(既存 example の最小改・新規 file 零)= `plane::wave_step_reference` で Step 執行 → slot0 f32 を吐く。
+比較 = `paste`+`awk`(shell のみ)。q20 は `od -An -v -td4 -j32`(`-v` 必須: `*` 圧縮が偽差を生む=骸)。
+
+```
+t1 cells=4    1tick  MAXABS=4.563481e-07 BOUND=9.537000e-07 MAXREF=1.860100e+00 MAXREL=2.453352e-07 PASS
+t2 cells=16   3tick  MAXABS=9.769963e-14 BOUND=1.406000e-05 MAXREF=3.439523e+00 MAXREL=2.840499e-14 PASS
+t4 cells=64   3tick  MAXABS=1.907348e-06 BOUND=1.406000e-05 MAXREF=6.443011e+00 MAXREL=2.960336e-07 PASS
+t5 cells=256  6tick  MAXABS=5.722046e-06 BOUND=2.000000e-04 MAXREF=8.524576e+00 MAXREL=6.712411e-07 PASS
+t6 cells=1024 10tick MAXABS=1.049042e-05 BOUND=3.360000e-03 MAXREF=8.672419e+00 MAXREL=1.209630e-06 PASS
+```
+全走 `sat=0`(§15 の飽和除外に該当せず)。傾向: 誤差は tick 数と共に緩やかに増(1.9e-6→1.05e-5)、
+上限 `E(N)` の増加(G^N)より遥かに遅い ∴ 誤差は **系統的増幅ではなく量子化雑音の準ランダム蓄積**。
+t2 の 9.8e-14 = 一様場 ∴ lap=0 で誤差経路が退化した特異例(裏付けにはならぬ・因を明記して残す)。
+
+**結論**: 真係数下で fieldrun は `wave_step_reference` の意味論に **§15 の許容内で一致**(bit 一致にあらず)。
+**G1 は依然存続**(product = `plane.rs:79-90` FFT 分光)。長走(A7 200tick)の parity は
+`E(200)` が無意味に発散する ∴ **主張せぬ・未測**(UNVERIFIED)。
