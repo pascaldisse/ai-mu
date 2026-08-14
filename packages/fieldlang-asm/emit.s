@@ -4,6 +4,7 @@
 // x1=token count · x2=out buf · x3=cap bytes
 // x4=header params ptr 40B {u32 w,h; u32 c,dt,damp,dx; u64 seed; u32 range; u32 n_slots}
 // ret x0 = bytes written; <0 = -(code): 1=syntax 2=buffull 4=arg-range
+//         5=shape (寫 n != w*h — full-plane write is the only legal 寫)
 
 .global _fl_emit
 .align 2
@@ -117,10 +118,17 @@ Ltag_one:                       // 歩 {count u32}
     b       Lloop
 
 Lvar:                           // 束/寫 {u32, u32 n, n×u32}
+    mov     x13, x10            // kind kept (leaf subs clobber x9/x10)
     bl      Lget_u32
     bl      Lput_u32
     bl      Lget_u32
     mov     x12, x0             // n
+    cmp     x13, #6             // 寫 ONLY: n must equal w*h (full plane)
+    b.ne    Lvar_len_ok
+    umull   x14, w25, w26       // w*h as u64 (w,h are u32)
+    cmp     x12, x14
+    b.ne    Lshape
+Lvar_len_ok:
     bl      Lput_u32
     cbz     x12, Lloop
 Lvar_loop:
@@ -177,6 +185,9 @@ Lbuffull:
     b       Lret
 Lrange:
     mov     x0, #-4
+    b       Lret
+Lshape:
+    mov     x0, #-5
 Lret:
     ldp     x19, x20, [sp, #16]
     ldp     x21, x22, [sp, #32]
