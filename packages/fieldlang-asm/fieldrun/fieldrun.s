@@ -18,6 +18,7 @@
 .extern _coef_from_header
 .extern _q20_from_bits
 .extern _fl_q30_wave_scalar
+.extern _fl_q30_wave_neon
 
 // 局所域(sp 基準、160B):
 //   0..31  cfg{w i32,h i32,c_cur i64,c_lap i64,c_prev i64}
@@ -29,6 +30,7 @@
 //   88..107 hdr5(5*u32 LE)
 //   112    write 先 ptr
 //   120    k
+//   128    backend 函数ポインタ(既定=_fl_q30_wave_scalar · --neon で _fl_q30_wave_neon)
 _main:
     stp x29, x30, [sp, #-96]!
     mov x29, sp
@@ -40,6 +42,39 @@ _main:
     sub sp, sp, #160
     mov x28, x0                    // argc
     mov x27, x1                    // argv
+    // ---- backend 選択(既定=scalar、前置旗 --neon のみ) ----
+    adrp x9, _fl_q30_wave_scalar@PAGE
+    add x9, x9, _fl_q30_wave_scalar@PAGEOFF
+    str x9, [sp, #128]             // [MUT:backend]
+    cmp w28, #2
+    b.lt Lusage
+    ldr x10, [x27, #8]
+    ldrb w9, [x10, #0]
+    cmp w9, #0x2D
+    b.ne Lbk_done
+    ldrb w9, [x10, #1]
+    cmp w9, #0x2D
+    b.ne Lbk_done
+    ldrb w9, [x10, #2]
+    cmp w9, #0x6E
+    b.ne Lbk_done
+    ldrb w9, [x10, #3]
+    cmp w9, #0x65
+    b.ne Lbk_done
+    ldrb w9, [x10, #4]
+    cmp w9, #0x6F
+    b.ne Lbk_done
+    ldrb w9, [x10, #5]
+    cmp w9, #0x6E
+    b.ne Lbk_done
+    ldrb w9, [x10, #6]
+    cbnz w9, Lbk_done
+    adrp x9, _fl_q30_wave_neon@PAGE
+    add x9, x9, _fl_q30_wave_neon@PAGEOFF
+    str x9, [sp, #128]             // no-fallback: 記号を直に指す(欠落=link 不成立)
+    add x27, x27, #8               // argv 進め
+    sub x28, x28, #1               // argc 減
+Lbk_done:
     cmp w28, #3
     b.lt Lusage
     mov x9, #16384                 // 既定 max_cells(硬碼禁 = 既定 + 引数)
@@ -225,7 +260,8 @@ Lstep_tick:
     mov x1, x25                    // cur
     mov x2, x26                    // prev
     mov x3, x27                    // out = scratch(alias 禁) [MUT:alias]
-    bl _fl_q30_wave_scalar
+    ldr x9, [sp, #128]             // backend(scalar 或 neon、黙し落ち無)
+    blr x9
     add x19, x19, x0               // sat 累計 [MUT:sat]
     // 三者回転: (cur,prev,scratch) <- (scratch,cur,prev)
     mov x9, x27

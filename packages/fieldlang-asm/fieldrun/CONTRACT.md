@@ -377,3 +377,37 @@ loud 伝播)· 22/23(非canonical/不変式、A3 を loud 伝播)。
 UNVERIFIED: A5(`--neon`)· A6(`--metal`)· A7(実 journal ≥200 step の三経路 SHA 一致)·
 A8(§3d 残余変異の一括表)· A9(上流 D1/G2 修正)は **未着手**。
 FLRO cell の endian は host LE をそのまま書く ∴ big-endian host での歯は **未検**(現行 arm64 のみ)。
+
+## 12. A5 実装記(Vayu)
+
+`fieldrun --neon`(前置旗のみ): 用 = `fieldrun [--neon] <in.fldj> <out.flro> [max_cells=16384]`。
+既定 = scalar。backend は局所 slot `[sp,#128]` の**函数ポインタ**(`_fl_q30_wave_scalar` 或
+`_fl_q30_wave_neon`)へ `blr` で分岐。**no-fallback**: `--neon` は neon 記号を直に指す ∴
+記号欠落 = **link 不成立**(実行体を作らぬ)。黙って scalar へ落ちる経路は**存在せぬ**
+(歯 `neon-symbol-gone` rc=1 · 歯 `default-is-scalar` = 壊れた neon を連結しても旗無しは scalar
+出力に byte 一致し `--neon` は乖離)。`build.sh` に `wave_neon.o` を連結(手ARM64のみ)。
+
+**FP/SIMD 走査の範囲(除外理由)**: `fieldrun_gate.sh`/`neon_gate.sh` の FP/SIMD 走査は
+**`fieldrun.s` に限る**。NEON 命令は `../q30_wave/wave_neon.s`(既存・凍結門下)に閉じ、
+fieldrun 側は記号呼出のみで vector レジスタを一切触れぬ ∴ 走査対象から backend 実装 file を
+除外する。之が緩和ではない証拠 = `fieldrun.s` の走査は無変更で緑、かつ neon 経路の正しさは
+scalar との FLRO byte 一致で採点される(下記門)。
+
+**門 `neon_gate.sh`(shell のみ)実測**: scalar と `--neon` の FLRO **byte/SHA-256 一致**:
+```
+3c-2x2-one-tick   c34a1425e8f9abebc91115b85de11468b3e55cced8c254e4b5cf3b6ca4b0ac69
+4x4-3tick         a85a4cc0ee310770209e5a67834ed7693b159c6130eae7f5afe709b093050a3c   (契約既知値と一致)
+saturating-vector ec09887b045dd627e746c0b7aaa3fc830e6368d41bd973c88e8287e22e38b744
+8x8-3tick-vecpath 39343e40a9fad4641c3c95ac6430d39c9b89934908f4a6beb39c5c03801f7e92
+9x9-3tick-vecedge 169ff90f75a5a07446526d544afce91a747e1a54634996f6b00d010e3e4bbe6d
+```
+2x2/4x4 は w<6 ∴ neon の**端胞 scalar 経路のみ**を踏む。4 胞 vector 経路を実際に踏ませる為に
+非一様場(胞毎相異)の 8x8(vector 内部)と 9x9(vector 境界 `x+4==w` が露出する幅)を追加。
+
+赤歯(全 KILLED 実測、各々単独): `neon-symbol-gone`(link rc=1)· `neon-round-half`(丸め半 2^29→2^28)·
+`neon-tail-drop`(`sqxtn2` 削除 = 上位2 lane 落ち)· `neon-lane-cross`(`ext #8`→`#4`)·
+`neon-bound-off-by-1`(vector 条件 `x+5<=w`→`x+4<=w`、**9x9 でのみ露出** = 8x8 では survive した
+死枝の因)· `neon-sat-drop`(vector 半の飽和計上落ち)。
+
+UNVERIFIED: A6(`--metal`)· A7(実 journal ≥200 step の三経路 SHA 一致)· A8 · A9 は未着手。
+`--neon` は arm64 macOS 実機のみ実測。

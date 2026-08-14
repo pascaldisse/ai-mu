@@ -18,6 +18,7 @@ sed 's/_main/_coef_libmain/g' coef.s >coef_lib.s
 as -arch arm64 -o q20_conv_lib.o q20_conv_lib.s
 as -arch arm64 -o coef_lib.o coef_lib.s
 as -arch arm64 -o wave_scalar.o ../q30_wave/wave_scalar.s
+as -arch arm64 -o wave_neon.o ../q30_wave/wave_neon.s
 as -arch arm64 -o fieldrun.o fieldrun.s
-ld -arch arm64 -o fieldrun -e _main -lSystem fieldrun.o q20_conv_lib.o coef_lib.o wave_scalar.o -syslibroot "$(xcrun --show-sdk-path)"
+ld -arch arm64 -o fieldrun -e _main -lSystem fieldrun.o q20_conv_lib.o coef_lib.o wave_scalar.o wave_neon.o -syslibroot "$(xcrun --show-sdk-path)"
 echo "built: fieldrun"

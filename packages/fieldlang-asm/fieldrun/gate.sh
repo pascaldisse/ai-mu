@@ -91,3 +91,6 @@ echo 'gate: fldj_parse A1 OK'
 
 # A4: fieldrun
 ./fieldrun_gate.sh
+
+# A5: --neon
+./neon_gate.sh

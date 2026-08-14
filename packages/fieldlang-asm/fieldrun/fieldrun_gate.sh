@@ -77,7 +77,7 @@ tooth() { # tooth <name> <sed-expr> <fldj> <ref-od>
   sed "$expr" fieldrun.s >"$work/m.s"
   cmp -s "$work/m.s" fieldrun.s && { echo "gate: tooth $name did not mutate" >&2; exit 1; }
   as -arch arm64 -o "$work/m.o" "$work/m.s"
-  ld -arch arm64 -o "$work/m" -e _main -lSystem "$work/m.o" q20_conv_lib.o coef_lib.o wave_scalar.o \
+  ld -arch arm64 -o "$work/m" -e _main -lSystem "$work/m.o" q20_conv_lib.o coef_lib.o wave_scalar.o wave_neon.o \
      -syslibroot "$(xcrun --show-sdk-path)"
   if "$work/m" "$src" "$work/m.flro" >"$work/m.out" 2>&1; then mrc=0; else mrc=$?; fi
   got=$(od -An -tx1 "$work/m.flro" 2>/dev/null | tr -s ' ' || :)
