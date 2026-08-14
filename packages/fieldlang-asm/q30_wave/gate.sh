@@ -3,6 +3,17 @@ set -eu
 cd "$(dirname "$0")"
 D=b826a11494d9e988ad90cc2db93aceceb77229ae741e028a2a785339751b493e
 echo "$D  wave_vectors.bin" | shasum -a 256 -c -
+# blocker5: deterministic shell-only generator must reproduce the frozen fixture byte-for-byte.
+./gen_wave_vectors.sh wave_vectors.regen
+cmp wave_vectors.regen wave_vectors.bin
+echo "$D  wave_vectors.regen" | shasum -a 256 -c -
+printf '%s\n' "generator byte parity=ok"
+# generator corruption tooth: one flipped byte must be caught by both cmp and digest.
+printf '\377' | dd of=wave_vectors.regen bs=1 seek=9 conv=notrunc >/dev/null 2>&1
+if cmp -s wave_vectors.regen wave_vectors.bin; then rm -f wave_vectors.regen; exit 1; fi
+if echo "$D  wave_vectors.regen" | shasum -a 256 -c - >/dev/null 2>&1; then rm -f wave_vectors.regen; exit 1; fi
+rm -f wave_vectors.regen
+printf '%s\n' "mutation generator-corruption rejected=ok"
 # Forbidden source-name and token scan; the scanner is deliberately outside its subject set.
 if find . -maxdepth 1 -type f \( -name '*.rs' -o -name '*.c' -o -name '*.swift' -o -name '*.py' \) | grep -q .; then exit 1; fi
 if grep -nEi 'rust|cargo|rustc|[.]rs|clang|swift|python|[.]c' ./*.s CONTRACT.md; then exit 1; fi
