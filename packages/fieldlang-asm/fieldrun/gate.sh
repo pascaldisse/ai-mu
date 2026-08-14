@@ -85,3 +85,6 @@ echo 'gate: fldj_parse A1 OK'
 
 # A2: q20_conv
 ./q20_gate.sh
+
+# A3: coef
+./coef_gate.sh

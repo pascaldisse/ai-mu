@@ -310,3 +310,33 @@ rc: 0 成功 · 20 非有限(NaN/±Inf)· 21 範囲外(|mag|>2^31 或 +2^31)· 1
 `truncate`(0.1→104857)· `clamp-no-reject`(0xC5000001 が rc=0)·
 `plus-2p31-allowed`(0x45000000 が rc=0)· `reject-boundary-tight`(-2048.0 を誤拒否)。
 UNVERIFIED: A3 以降(係数・三buffer回転・FLRO・三経路 SHA)は未着手。
+
+## 10. A3 実装記(Surya)
+
+`coef.s`(手ARM64・整数のみ、FP レジスタ/FP 命令 零 = `coef_gate.sh` が二重走査で強制)+
+`coef_gate.sh`(shell のみ)。用: `coef <c> <dt> <damping> <dx> <range>`(各 hex bits)
+→ stdout `c_cur=2040220160 c_lap=10737419 c_prev=-966478272`。
+rc: 0 成功 · 22 非 canonical(loud reject)· 23 不変式 `|c_lap|>2^29` · 17 用法/hex 不正。
+公開記号 `_coef_from_header(x0=5*u32 LE, x1=3*i64 出力域) -> x0=rc`(A4 が呼ぶ)。
+検査 = 5値の **byte 一致**のみ。実行時 f32 算 零・係数は即値。
+
+**独立検算(bc 実走、§5 と別入力・同律の再導出)**:
+```
+16759927*13421773 = 224947935690571 ; /2^24 = 13407941 rem 13418315 > 8388608 ∴ 切上 → m_dd=13407942
+2^28-13407942 = 255027514 ; /16 = 15939219 rem 10 > 8 ∴ 切上 → 15939220*2^7 = 2040220160  = c_cur ✓
+2^27-13407942 = 120809786 ; /8  = 15101223 rem  2 < 4 ∴ 切捨 → 15101223*2^6 =  966478272  = -c_prev ✓
+13421773^2 = 180143990463529 ; /2^24 = 10737418 rem 9395241 > 8388608 ∴ 切上 → 10737419 = c_lap ✓
+```
+∴ Vishnu §5 と **一致**(三定数とも)。丸め分岐は全て rem 対 half の比較で確定、境界 tie 無し。
+不変式: `10737419 <= 2^29 = 536870912` ✓(実装で実測検査、歯 `lap-over-2p29` が rc=23 を実証)。
+
+**§3a erratum の独立検証(Agni 主張の再確認)**: `0x34000000` の e フィールド =
+`(0x34000000>>23)&0xFF = 104` ∴ E = 104-127 = -23、仮数 = 2^23 ∴ 値 = `2^-23`。
+§3a の「2^-21」は誤、Agni の訂正が **正**。真の 2^-21 = `0x35000000`(e=106)も実測一致。
+∴ §3a の当該 3 行(`0x34000000`/`0x33FFFFFF`/`0x34000001`)は bit literal 側の誤記であり、
+§2a の律は無変更。
+
+赤歯(全 KILLED 実測): `c_cur-decimal-damping`(十進 0.999 起こし → 2040219776)·
+`c_lap-truncate` · `c_prev-sign` · `dt-check-removed` · `damping-check-removed` ·
+`range-check-removed` · `invariant-removed` · `lap-over-2p29`(rc=23 実証)。
+UNVERIFIED: A4 以降(三 buffer 回転・`_fl_q30_wave_scalar` 呼出・FLRO 書出・三経路 SHA)未着手。
