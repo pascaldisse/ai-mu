@@ -75,10 +75,12 @@ Lcase:
     uxtw x15, w13
     lsl x15, x15, #2
     str x15, [sp, #32]             // bytes
-    // copy cur, prev into bounded aligned arenas; retain expected pointer
+    // copy cur, prev into bounded aligned arenas; retain vector offsets.
+    str x9, [sp, #56]
     adrp x0, _curbuf@PAGE
     add x0, x0, _curbuf@PAGEOFF
     bl Lcopy
+    str x9, [sp, #64]
     adrp x0, _prevbuf@PAGE
     add x0, x0, _prevbuf@PAGEOFF
     ldr x15, [sp, #32]
@@ -123,6 +125,63 @@ Lcase:
     b.ne Lfail
     adrp x0, _outbuf@PAGE
     add x0, x0, _outbuf@PAGEOFF
+    ldr x1, [sp, #40]
+    ldr x2, [sp, #32]
+    bl Lcmp
+    cbnz w0, Lfail
+    // Repeat both implementations at deliberately +1-byte addresses.
+    ldr x9, [sp, #56]
+    adrp x0, _curbuf@PAGE
+    add x0, x0, _curbuf@PAGEOFF
+    add x0, x0, #1
+    ldr x15, [sp, #32]
+    bl Lcopy
+    ldr x9, [sp, #64]
+    adrp x0, _prevbuf@PAGE
+    add x0, x0, _prevbuf@PAGEOFF
+    add x0, x0, #1
+    ldr x15, [sp, #32]
+    bl Lcopy
+    adrp x0, _cfg@PAGE
+    add x0, x0, _cfg@PAGEOFF
+    adrp x1, _curbuf@PAGE
+    add x1, x1, _curbuf@PAGEOFF
+    add x1, x1, #1
+    adrp x2, _prevbuf@PAGE
+    add x2, x2, _prevbuf@PAGEOFF
+    add x2, x2, #1
+    adrp x3, _outbuf@PAGE
+    add x3, x3, _outbuf@PAGEOFF
+    add x3, x3, #1
+    bl _fl_q30_wave_scalar
+    ldr x10, [sp, #48]
+    cmp x0, x10
+    b.ne Lfail
+    adrp x0, _outbuf@PAGE
+    add x0, x0, _outbuf@PAGEOFF
+    add x0, x0, #1
+    ldr x1, [sp, #40]
+    ldr x2, [sp, #32]
+    bl Lcmp
+    cbnz w0, Lfail
+    adrp x0, _cfg@PAGE
+    add x0, x0, _cfg@PAGEOFF
+    adrp x1, _curbuf@PAGE
+    add x1, x1, _curbuf@PAGEOFF
+    add x1, x1, #1
+    adrp x2, _prevbuf@PAGE
+    add x2, x2, _prevbuf@PAGEOFF
+    add x2, x2, #1
+    adrp x3, _outbuf@PAGE
+    add x3, x3, _outbuf@PAGEOFF
+    add x3, x3, #1
+    bl _fl_q30_wave_neon
+    ldr x10, [sp, #48]
+    cmp x0, x10
+    b.ne Lfail
+    adrp x0, _outbuf@PAGE
+    add x0, x0, _outbuf@PAGEOFF
+    add x0, x0, #1
     ldr x1, [sp, #40]
     ldr x2, [sp, #32]
     bl Lcmp
