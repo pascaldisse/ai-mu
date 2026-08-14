@@ -43,9 +43,14 @@ printf "%s\n" "mutation fixture-record-truncated rejected=ok"
 # arena頂 teeth(round11 自攻): 宣言上限 n=0x4000 は真に arena 内でなければならぬ。
 # count検査のみ緩めた probe を組立て、n=16384 は緑・n=16385 は赤 を要求。
 # 修正前(65536 arena)は n>=16360 で out guard が越境破壊され n=16384 が赤だった。
+# probe 二種: count検査のみ緩めた bounds_probe、count+末端一致を緩めた need_probe。
+# 後者は Lneed(残長検証)を **単独に** 露出させる——末端一致検査に隠れさせぬ為。
 sed 's/    cmp x10, #138/    cmp x10, x10/' wave_runner.s > bounds_probe.s
-as -arch arm64 -o bounds_probe.o bounds_probe.s
-ld -arch arm64 -o bounds_probe -e _main -lSystem bounds_probe.o wave_scalar.o wave_neon.o -syslibroot "$(xcrun --show-sdk-path)"
+perl -0pe 's/    ldr x16, \[sp, #80\]\n    cmp x9, x16\n    b\.ne Lfail\n(    ldr x10, \[sp, #24\])/$1/; s/    cmp x10, #138/    cmp x10, x10/' wave_runner.s > need_probe.s
+for p in bounds_probe need_probe; do
+  as -arch arm64 -o $p.o $p.s
+  ld -arch arm64 -o $p -e _main -lSystem $p.o wave_scalar.o wave_neon.o -syslibroot "$(xcrun --show-sdk-path)"
+done
 mkcase() { n=$1; b=$((n*4))
   { printf 'Q30WAVE2\000'; printf '\002\000ab'; printf '\001\000\000\000'
     printf "$(printf '\\%03o\\%03o\\%03o\\%03o' $((n&255)) $(((n>>8)&255)) $(((n>>16)&255)) $(((n>>24)&255)))"
@@ -53,8 +58,23 @@ mkcase() { n=$1; b=$((n*4))
 mkcase 16384; mkcase 16385
 ./bounds_probe all wave_bounds_16384.bin >/dev/null 2>&1 || { rm -f wave_bounds_*.bin bounds_probe*; exit 1; }
 if ./bounds_probe all wave_bounds_16385.bin >/dev/null 2>&1; then rm -f wave_bounds_*.bin bounds_probe*; exit 1; fi
-rm -f wave_bounds_*.bin bounds_probe bounds_probe.o bounds_probe.s
 printf "%s\n" "arena-top n=16384 in-bounds / n=16385 rejected=ok"
+# Lneed 単独 teeth: record が file end を越えて dims を宣する入力。
+# Lneed を no-op にすれば need_probe は **受理**し(filebuf の零を読む)、この歯が赤くなる。
+{ printf 'Q30WAVE2\000'; printf '\002\000ab'; printf '\001\000\000\000\000\100\000\000'; head -c 24 /dev/zero; } > wave_overdeclared.bin
+if ./need_probe all wave_overdeclared.bin >/dev/null 2>&1; then exit 1; fi
+printf "%s\n" "remaining-length tooth (over-declared record) rejected=ok"
+# u64 checked dims 単独 teeth: 32bit mul に戻せば **SIGSEGV(139)**。清き rc=1 のみ可。
+{ printf 'Q30WAVE2\000'; printf '\002\000ab'; printf '\000\000\001\000\000\000\001\000'; head -c 24 /dev/zero; head -c 8 /dev/zero; printf '\000\000'; } > wave_dims32.bin
+./wave_runner all wave_dims32.bin >/dev/null 2>&1 || dims_rc=$?
+[ "${dims_rc:-0}" = "1" ] || exit 1
+printf "%s\n" "u64-checked dims tooth (65536x65536, clean rc=1) ok"
+# arena一杯(read が filebuf を埋め尽くす)teeth: 拒否を外せば bounds_probe が前半だけを受理する。
+L=65483; N=16384
+{ printf 'Q30WAVE2\000'; printf '\313\377'; head -c $L /dev/zero; printf '\001\000\000\000\000\100\000\000'; head -c 24 /dev/zero; head -c $((12*N)) /dev/zero; head -c 8 /dev/zero; printf '\000\000'; head -c 32 /dev/zero; } > wave_arenafull.bin
+if ./bounds_probe all wave_arenafull.bin >/dev/null 2>&1; then exit 1; fi
+printf "%s\n" "arena-full short-read tooth rejected=ok"
+rm -f wave_bounds_*.bin wave_overdeclared.bin wave_dims32.bin wave_arenafull.bin bounds_probe bounds_probe.o bounds_probe.s need_probe need_probe.o need_probe.s
 ./wave_abi_probe
 otool -tvV wave_runner > wave-otool.txt
 for m in smull.2d saddl.2d saddl2.2d sshll.2d sshll2.2d sqxtn.2s sqxtn2.4s sshr.2d shl.2d xtn.2s cmgt.2d addp.2d dup.2d ld1.4s st1.4s; do grep -qF "$m" wave-otool.txt || exit 1; done
