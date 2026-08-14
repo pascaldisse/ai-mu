@@ -11,4 +11,5 @@ lexer.o
 test_lexer
 packages/fieldlang-asm/q30_wave/*.o
 packages/fieldlang-asm/q30_wave/wave_runner
+packages/fieldlang-asm/q30_wave/wave_abi_probe
 packages/fieldlang-asm/q30_wave/wave-otool.txt
