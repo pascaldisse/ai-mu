@@ -2,7 +2,8 @@
 # A7: .fld 源(gaialang 文)生成器 — shell のみ。
 # 独立性: 本器は fieldrun/fldj_parse.s/fieldc の実装を一切読まぬ。
 #   参照は ../CONTRACT.md の文法(界/寫/歩)のみ。出力は人可読 .fld 文字列。
-# 環境: W H NSLOTS SEED STEPN PHASE(初期場の位相ずらし)
+# 環境: W H NSLOTS SEED STEPN PHASE(初期場の位相ずらし) EBASE ESPAN(指数欄の基点・幅)
+#   EBASE/ESPAN 既定 = 118/20 ∴ 既定出力は不変(§17 の非飽和走を作る為の引数化・硬碼除去)。
 # 用: gen_fld_a7.sh <out.fld>
 set -eu
 out=${1:?usage: gen_fld_a7.sh <out.fld>}
@@ -12,6 +13,8 @@ NSLOTS=${NSLOTS:-2}
 SEED=${SEED:-0}
 STEPN=${STEPN:-200}
 PHASE=${PHASE:-0}
+EBASE=${EBASE:-118}
+ESPAN=${ESPAN:-20}
 
 n=$((W * H))
 
@@ -22,7 +25,7 @@ k=0
 vals=''
 while [ $k -lt $n ]; do
   i=$((k + PHASE))
-  e=$((118 + (i * 7 + (i / W) * 3) % 20))     # 118..137 → |v| ∈ [2^-9, 2^10]
+  e=$((EBASE + (i * 7 + (i / W) * 3) % ESPAN)) # 既定 118..137 → |v| ∈ [2^-9, 2^10]
   f=$(( (i * 2654435761 + (i / W) * 40503) % 8388608 ))
   s=$(( (i / 5 + i) % 2 ))
   bits=$(( s * 2147483648 + e * 8388608 + f ))
