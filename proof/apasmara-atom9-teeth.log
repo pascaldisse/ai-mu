@@ -1,0 +1,17 @@
+== A8 段1: §3d 残余変異(各々単独適用)==
+raw     baseline rc: truncation=14 trailing=14 bad-tag=12 bad-len=15 wh-32bit=8
+KILLED  truncation-check-removed   baseline rc=14 -> mutant rc=12  fieldrun reject code=12
+KILLED  trailing-byte-check-removed baseline rc=14 -> mutant rc=12  fieldrun reject code=12
+KILLED  bad-tag-check-removed      baseline rc=12 -> mutant rc=0  
+KILLED  bad-len-check-removed      baseline rc=15 -> mutant rc=12  fieldrun reject code=12
+KILLED  wh-32bit-multiply          baseline rc=8 -> mutant rc=19  fieldrun reject code=19
+green   backend-forced-failure     rc=24 出力 file 零 (metal NSError: library not found)
+KILLED  metal-init-check-removed   baseline rc=24 -> mutant rc=25  metal NSError: library not found
+
+== A8 段2: 既存門 実走(A1..A7 全歯採取・緑維持検査)==
+gate: SKIP-ENV 伝播 rc=3 (段2 未実施)
+KILLED  tooth:nonsat-distinct      sha=b44380767643728b27d526c765d62e9e8841baccf9532dbd9c3dd7159394f7c3 != sha200 (EBASE/ESPAN が真に効く)
+raw     nonsat-cells-first8        71519 70481 69162 67591 65871 64115 62398 60819 
+gate: fieldrun A7 (real fieldc journal, 32x32, 200 step, 三経路) OK — 既定 vector=SAT(byte 一致のみ)· nonsat vector=sat=0(f32 意味論 parity 射程内)
+gate: SKIP-ENV replay_fldj absent at '../../../target/debug/examples/replay_fldj' — 検査未実施 rc=3
+gate: A10 SKIP-ENV rc=3 (伝播)
