@@ -345,7 +345,7 @@ UNVERIFIED: A4 以降(三 buffer 回転・`_fl_q30_wave_scalar` 呼出・FLRO �
 
 `fieldrun.s`(手ARM64・整数のみ、FP/SIMD レジスタ・FP 命令 零 = `fieldrun_gate.sh` が二重走査で強制)
 + `fieldrun_gate.sh`(shell のみ)+ `gen_fldj.sh` に `PAYLOAD`/`FILL`(payload bit 列指定)追加。
-用: `fieldrun <in.fldj> <out.flro> [max_cells=16384]`(硬碼禁 = 既定 + 引数、arena 実寸 16384 胞)。
+用: `fieldrun <in.fldj> <out.flro> [max_cells=16384]`(硬碼禁 = 既定 + 引数)。**arena は §16 で mmap 化**(A4 当時の「arena 実寸 16384 胞」= 第二の固定上限 = 誤、Chandi が blocker として摘出)。
 連結: `q20_conv.s`/`coef.s` を `sed` で `_main` 改名した lib 版 + `../q30_wave/wave_scalar.s`
 (記号衝突回避、新規 Rust/C/Swift/Python 零)。
 
@@ -551,3 +551,38 @@ KILLED  metal-init-check-removed   baseline rc=24 -> mutant rc=25  metal NSError
 `../q30_wave_metal/gate.sh`。
 
 UNVERIFIED: A9(上流 D1 `寫 n==w*h` 生産側検査 + G2 十進注釈訂正)= **未着手**。
+
+## 16. A8b 実装記(Akasha・Chandi 審 blocker の閉塞)
+
+**摘出(Chandi, `CHANDI_REVIEW.md`, verdict=赤)**: §2e/§11 は「max_cells = 既定 + 引数(硬碼禁)」と
+謳うが `fieldrun.s` に **第二の固定上限 16384**(静的 `.space` arena の実寸)が在り、
+`129x128 = 16512` 胞・引数 `16512` が **rc=8** で落ちた。∴ 契約と実装の齟齬。
+
+**どちらが誤りか**: **実装が誤**。契約(硬碼禁)が法であり、静的 arena は之に違反していた。
+§11 の「arena 実寸 16384 胞」という記述も、固定上限を正当化する形で書かれていた点で **誤**
+(本節で訂正済)。§2e の「`w*h <= 実装 arena 上限`(定数、硬碼禁=既定値+引数)」は
+「上限 = **引数由来の max_cells のみ**」と読むのが正。
+
+**修正**: 静的 `_bufA/_bufB/_bufC`(各 64KiB)を撤去し、`n` 確定後に
+`mmap(NULL, n*4, PROT_READ|WRITE, MAP_ANON|MAP_PRIVATE, -1, 0)` を **三本**取る
+(`MAP_ANON` ∴ 全域 0 = §2d の初期条件を保つ)。判定は `n > max_cells` の **一箇所のみ**。
+mmap 失敗 = **rc=19 loud**(新 rc)。
+
+**実測(生)**:
+```
+green   arena-arg-16512        rc=0 size=66080 (max_cells=16512、旧固定 16384 超)
+KILLED  arena-arg-under        rc=8 fieldrun reject code=8            (引数 16511 < 16512 胞)
+KILLED  arena-cap-hardcoded    rc=8 output differs from reference     (`ldr x9,[sp,#48]`→`mov x9,#16384` = 硬碼再導入)
+```
+回帰零(SHA 不変、本 lane 実測): `4x4-3tick a85a4cc0ee310770209e5a67834ed7693b159c6130eae7f5afe709b093050a3c` ·
+`real-journal-32x32-200step ead5a8fff10ea68936fd56bd2861de869328840c8e9a27dfcb18da919c9d3370`。
+全門 rc=0: `fieldrun/gate.sh` · `teeth_kill.sh`(KILLED=79 green=37 SURVIVED=0)· `../gate.sh` ·
+`../q30_wave/gate.sh` · `../q30_wave_metal/gate.sh`。
+
+**残る固定量(隠さぬ)**: 入力 file 緩衝 `_filebuf = 4 MiB`(静的)∴ 4 MiB 超の `.fldj` は読めぬ。
+之は arena とは別の資源であり、**本 atom の範囲外**(未修正・**UNVERIFIED** な上限)。
+引数化すべきか否かは A9 以降の判断に委ねる。16512 胞の journal = 66110 B ∴ 現要件には十分。
+
+**G1 の存続(Chandi 再確認)**: product 執行路は `world.rs:93-99` → `plane.rs:79-90` `wave_step`(FFT)
+∴ fieldrun の Q30 reference stencil とは **別法**。三経路 byte 一致が示すのは
+`wave_step_reference` 意味論**内部**の整合のみであり、**product parity は非証明**。之を契約に残す。
