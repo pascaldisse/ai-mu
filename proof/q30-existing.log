@@ -1,0 +1,15 @@
+built: q30_selftest q30_bench
+built: q30_selftest q30_bench
+built: q30_selftest q30_bench
+q30 exact: scalar oracle, unaligned, count 0..9, extrema, 100003 deterministic cells=ok
+q30 disassembly: smull/smull2/sshr/sqxtn/sqxtn2=ok
+q30 mutation: Q30->Q29 rejected=ok
+benchmark scalar (32 x 1048576 cells; wall seconds):
+real 0.29
+user 0.01
+sys 0.00
+benchmark neon (32 x 1048576 cells; wall seconds):
+real 0.02
+user 0.01
+sys 0.00
+q30 gate: assembly closure OK (no speed claim)

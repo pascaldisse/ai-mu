@@ -1,0 +1,162 @@
+built: q30_metal_selftest
+metal device: Apple M1 Pro
+metal families supported: 1001 1002 1003 1004 1005 1006 1007 3001 3002 3003 5001 
+metal command status: 4
+metal command error: nil
+metal command status: 4
+metal command error: nil
+metal command status: 4
+metal command error: nil
+metal command status: 4
+metal command error: nil
+metal command status: 4
+metal command error: nil
+metal command status: 4
+metal command error: nil
+metal command status: 4
+metal command error: nil
+metal command status: 4
+metal command error: nil
+metal command status: 4
+metal command error: nil
+metal command status: 4
+metal command error: nil
+metal command status: 4
+metal command error: nil
+metal command status: 4
+metal command error: nil
+metal command status: 4
+metal command error: nil
+metal command status: 4
+metal command error: nil
+metal command status: 4
+metal command error: nil
+metal command status: 4
+metal command error: nil
+metal command status: 4
+metal command error: nil
+metal command status: 4
+metal command error: nil
+metal command status: 4
+metal command error: nil
+metal command status: 4
+metal command error: nil
+metal command status: 4
+metal command error: nil
+metal command status: 4
+metal command error: nil
+metal command status: 4
+metal command error: nil
+metal command status: 4
+metal command error: nil
+metal command status: 4
+metal command error: nil
+metal command status: 4
+metal command error: nil
+metal command status: 4
+metal command error: nil
+metal command status: 4
+metal command error: nil
+metal command status: 4
+metal command error: nil
+metal command status: 4
+metal command error: nil
+metal command status: 4
+metal command error: nil
+metal command status: 4
+metal command error: nil
+metal command status: 4
+metal command error: nil
+metal command status: 4
+metal command error: nil
+metal command status: 4
+metal command error: nil
+metal command status: 4
+metal command error: nil
+metal command status: 4
+metal command error: nil
+metal command status: 4
+metal command error: nil
+metal command status: 4
+metal command error: nil
+metal command status: 4
+metal command error: nil
+metal command status: 4
+metal command error: nil
+metal command status: 4
+metal command error: nil
+metal command status: 4
+metal command error: nil
+metal command status: 4
+metal command error: nil
+metal command status: 4
+metal command error: nil
+metal command status: 4
+metal command error: nil
+metal command status: 4
+metal command error: nil
+metal command status: 4
+metal command error: nil
+metal command status: 4
+metal command error: nil
+metal command status: 4
+metal command error: nil
+metal command status: 4
+metal command error: nil
+metal command status: 4
+metal command error: nil
+metal command status: 4
+metal command error: nil
+metal command status: 4
+metal command error: nil
+metal command status: 4
+metal command error: nil
+metal command status: 4
+metal command error: nil
+metal command status: 4
+metal command error: nil
+metal command status: 4
+metal command error: nil
+metal command status: 4
+metal command error: nil
+metal command status: 4
+metal command error: nil
+metal command status: 4
+metal command error: nil
+metal command status: 4
+metal command error: nil
+metal command status: 4
+metal command error: nil
+metal command status: 4
+metal command error: nil
+metal command status: 4
+metal command error: nil
+metal command status: 4
+metal command error: nil
+metal command status: 4
+metal command error: nil
+metal command status: 4
+metal command error: nil
+metal command status: 4
+metal command error: nil
+metal command status: 4
+metal command error: nil
+q30_metal_selftest:
+	/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1356.0.0)
+	/usr/lib/libobjc.A.dylib (compatibility version 1.0.0, current version 228.0.0)
+	/System/Library/Frameworks/Metal.framework/Versions/A/Metal (compatibility version 1.0.0, current version 373.2.0)
+	/System/Library/Frameworks/Foundation.framework/Versions/C/Foundation (compatibility version 300.0.0, current version 5026.5.4)
+_MTLCreateSystemDefaultDevice
+_exit
+_objc_autoreleasePoolPop
+_objc_autoreleasePoolPush
+_objc_getClass
+_objc_msgSend
+_sel_registerName
+_write
+built: q30_metal_selftest
+metal device: Apple M1 Pro
+metal families supported: 1001 1002 1003 1004 1005 1006 1007 3001 3002 3003 5001 
+metal command status: 4
+metal command error: nil
+q30 metal: GPU pipeline, 64 threads, 77 scalar+NEON byte parity, mutation red=ok

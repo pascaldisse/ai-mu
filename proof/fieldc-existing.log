@@ -1,0 +1,14 @@
+built: fieldc
+golden ex1 sha256=d89a5df92da79f2d435a4383bfde59e3f63f81c57ab4204aae2d2e4aa7b30b52 parity=ok
+golden ex2 sha256=7ef5548e6cb9ae3519a05bc0db40a7c2542d2e072045627f759f9ffdec131ba2 parity=ok
+golden ex3 sha256=2412d691e6b85bb9dab5f5e90e78f829501e4641128bdcc28788f36137179a5d parity=ok
+negative syntax rc=1 rejected=ok
+negative range rc=1 rejected=ok
+negative missing_arg rc=1 rejected=ok
+negative extra_arg rc=1 rejected=ok
+negative invalid_byte rc=1 rejected=ok
+boundary exact-BUFSZ rc=0 sha256=d358605841ba64749323bf2e4d793d1337631a3271d9e9e72869a2ee7168bae9 perm=-rw-r--r-- parity=ok
+boundary over rc=1 rejected=ok (no output file)
+boundary big rc=1 rejected=ok (no output file)
+boundary existing-output preserved=ok
+gate: fieldc assembly closure OK
