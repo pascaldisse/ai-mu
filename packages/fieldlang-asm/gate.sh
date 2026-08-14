@@ -14,6 +14,12 @@ esac
 
 ./build.sh
 
+# fieldc 未生成 = 環境事由 ∴ 検査失敗(rc=1)と区別して **明示 rc=3** で落とす(偽赤禁)。
+if [ ! -x "$FIELDC" ]; then
+  echo "gate: SKIP-ENV fieldc not built at '$FIELDC' (build.sh が生成せず) — 検査未実施 rc=3" >&2
+  exit 3
+fi
+
 check_example() {
   name=$1
   golden=$2

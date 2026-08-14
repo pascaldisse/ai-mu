@@ -111,4 +111,22 @@ if ./fieldrun "$work/t7.fldj" "$work/t7b.flro" 16511 >"$work/t7b.out" 2>&1; then
 printf 'KILLED  %-22s rc=8 %s\n' 'arena-arg-under' "$(cat "$work/t7b.out")"
 tooth arena-cap-hardcoded 's|ldr x9, \[sp, #48\]|mov x9, #16384|' "$work/t7.fldj" "$ref7" 16512
 
+# ---- A9-5: max_slots 引数化(第6引数、既定 1024)----
+NSLOTS=4 ./gen_fldj.sh "$work/t8.fldj"
+./fieldrun "$work/t8.fldj" "$work/t8.flro" 16384 4194304 4
+ref8=$(od -An -v -tx1 "$work/t8.flro" | tr -s ' ')
+./fieldrun "$work/t8.fldj" "$work/t8d.flro"          # 既定 1024 経路
+cmp "$work/t8.flro" "$work/t8d.flro" || { echo 'gate: max_slots arg changed output' >&2; exit 1; }
+printf 'green   %-22s rc=0 (n_slots=4 · 引数 4 と既定 1024 が byte 一致)\n' 'slots-arg-4'
+if ./fieldrun "$work/t8.fldj" "$work/t8b.flro" 16384 4194304 3 >"$work/t8b.out" 2>&1; then rc=0; else rc=$?; fi
+[ "$rc" -eq 10 ] || { echo "gate: slots-arg-under rc=$rc want=10" >&2; exit 1; }
+printf 'KILLED  %-22s rc=10 %s\n' 'slots-arg-under' "$(cat "$work/t8b.out")"
+NSLOTS=2000 ./gen_fldj.sh "$work/t9.fldj"
+./fieldrun "$work/t9.fldj" "$work/t9.flro" 16384 4194304 2000   # 旧固定 1024 超
+printf 'green   %-22s rc=0 (旧硬碼 1024 超)\n' 'slots-arg-2000'
+if ./fieldrun "$work/t9.fldj" "$work/t9b.flro" >"$work/t9b.out" 2>&1; then rc=0; else rc=$?; fi
+[ "$rc" -eq 10 ] || { echo "gate: slots-default-cap rc=$rc want=10" >&2; exit 1; }
+printf 'KILLED  %-22s rc=10 %s\n' 'slots-default-cap' "$(cat "$work/t9b.out")"
+tooth slots-cap-hardcoded 's|ldr x10, \[sp, #160\]|mov x10, #1024|' "$work/t9.fldj" "$ref8" '16384 4194304 2000'
+
 echo 'gate: fieldrun A4 OK'

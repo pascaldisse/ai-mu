@@ -24,7 +24,7 @@
 .extern _fl_wave_metal_init
 .extern _fl_q30_wave_metal
 
-// 局所域(sp 基準、160B):
+// 局所域(sp 基準、176B ; 160 = max_slots 上限[既定 1024、第6引数]):
 //   0..31  cfg{w i32,h i32,c_cur i64,c_lap i64,c_prev i64}
 //   32     step 残
 //   40     out fd
@@ -47,7 +47,7 @@ _main:
     stp x23, x24, [sp, #48]
     stp x25, x26, [sp, #64]
     stp x27, x28, [sp, #80]
-    sub sp, sp, #160
+    sub sp, sp, #176               // 160 + 16(max_slots @160)
     mov x28, x0                    // argc
     mov x27, x1                    // argv
     // ---- backend 選択(既定=scalar、前置旗 --neon のみ) ----
@@ -110,6 +110,8 @@ Lbk_done:
     b.lt Lusage
     mov x9, #16384                 // 既定 max_cells(硬碼禁 = 既定 + 引数)
     str x9, [sp, #48]
+    mov x9, #1024                  // 既定 max_slots(第6引数で上書き可・硬碼禁)
+    str x9, [sp, #160]
     cmp w28, #4
     b.lt Largs_done
     ldr x0, [x27, #24]
@@ -127,6 +129,14 @@ Lbk_done:
     cbz x1, Lusage
     cbz x0, Lusage
     str x0, [sp, #144]
+    // 6th arg: max_slots(slot 数上限)
+    cmp w28, #6
+    b.lt Largs_done_have
+    ldr x0, [x27, #40]
+    bl Lparse_dec
+    cbz x1, Lusage
+    cbz x0, Lusage
+    str x0, [sp, #160]
     b Largs_done_have
 Largs_done:
     movz x9, #0x40, lsl #16        // 既定 4 MiB(max_cells 引数無し経路)
@@ -191,7 +201,7 @@ Largs_done_have:
     uxtw x9, w9
     cmp x9, #2
     b.lo Lrej_slots_lo
-    mov x10, #1024
+    ldr x10, [sp, #160]            // max_slots(引数、硬碼零)
     cmp x9, x10
     b.hi Lrej_slots_hi
 

@@ -669,3 +669,12 @@ t2 の 9.8e-14 = 一様場 ∴ lap=0 で誤差経路が退化した特異例(裏
 **結論**: 真係数下で fieldrun は `wave_step_reference` の意味論に **§15 の許容内で一致**(bit 一致にあらず)。
 **G1 は依然存続**(product = `plane.rs:79-90` FFT 分光)。長走(A7 200tick)の parity は
 `E(200)` が無意味に発散する ∴ **主張せぬ・未測**(UNVERIFIED)。
+
+## §16 A9-5 残務閉(Ganga)
+
+- **max_slots 引数化**: `fieldrun.s` の `mov x10,#1024` → `ldr x10,[sp,#160]`。frame 160→176B、
+  slot160 = max_slots(既定 1024・**第6引数**で上書き)。`fieldrun <in> <out> [max_cells] [max_bytes] [max_slots]`。
+  歯: `slots-arg-4`(引数4 と既定 byte 一致)· `slots-arg-under rc=10` · `slots-arg-2000`(旧硬碼超 rc=0)·
+  `slots-default-cap rc=10` · `slots-cap-hardcoded`(硬碼再導入 = KILLED)。
+- **`../gate.sh` 偽赤**: `$FIELDC` 不在時に `rc=3`(SKIP-ENV)で落とし、検査失敗 `rc=1` と区別。実測 `missing rc=3` / `normal rc=0`。
+- 残る固定量: `.bss` 内部固定は fieldrun.s に理由明記済(範囲外)。
