@@ -4,10 +4,16 @@ cd "$(dirname "$0")"
 V=../q30_wave/wave_vectors.bin
 D=b826a11494d9e988ad90cc2db93aceceb77229ae741e028a2a785339751b493e
 echo "$D  $V" | shasum -a 256 -c -
+# generator independence: gen_wave_vectors.sh never reads the fixture (write-only,
+# law reimplemented in bash arithmetic) yet regenerates the frozen digest byte-exact.
+if grep -nE '(cat|dd|read |od|xxd|cmp).*wave_vectors' ../q30_wave/gen_wave_vectors.sh; then exit 1; fi
+../q30_wave/gen_wave_vectors.sh wv.regen
+echo "$D  wv.regen" | shasum -a 256 -c -
+rm -f wv.regen; printf 'generator independence: write-only + regen digest match=ok\n'
 # Forbidden source scan: no Rust/C/Swift/Python source on the product path.
 if find . -maxdepth 1 -type f \( -name '*.rs' -o -name '*.c' -o -name '*.swift' -o -name '*.py' \) | grep -q .; then exit 1; fi
 if grep -nEi 'rust|cargo|rustc|wgpu|swiftc|python' ./*.s build.sh; then exit 1; fi
-trap 'rm -f *.o *.air wave_metal_runner q30_wave.metallib gate-base.log gate-edge.log wv.edge; for f in wave_q30.metal metal_bridge.s; do test -f "$f.save" && mv "$f.save" "$f"; done' EXIT HUP INT TERM
+trap 'rm -f *.o *.air wave_metal_runner q30_wave.metallib gate-base.log gate-edge.log gate-guard.log wv.edge wv.regen; for f in wave_q30.metal metal_bridge.s; do test -f "$f.save" && mv "$f.save" "$f"; done' EXIT HUP INT TERM
 ./build.sh
 # live GPU corpus: 138 vectors, scalar=NEON=Metal, offsets 0/4/28, alias, reps,
 # per-dispatch saturation reset, count0/negative/overflow host checks.
@@ -68,7 +74,31 @@ mut host-sat-reset        metal_bridge.s 'if(!$d&&s/str wzr, \[x9\]             
 mut host-status4          metal_bridge.s 'if(!$d&&s/cmp x0, #4\n    b\.ne Lwd_fail/cmp x0, #3\n    b.ne Lwd_fail/){$d=1}'
 mut host-nserror          metal_bridge.s 'if(!$d&&s/bl _objc_msgSend\n    cbnz x0, Lwd_fail\n    adrp x0, Lwm_status4\@PAGE/bl _objc_msgSend\n    cbz x0, Lwd_fail\n    adrp x0, Lwm_status4\@PAGE/){$d=1}'
 mut host-encoder-offset   metal_bridge.s 'if(!$d&&s/mov x2, x19\n    mov x3, x23\n    mov x4, #0/mov x2, x19\n    mov x3, #0\n    mov x4, #0/){$d=1}'
+mut host-readback-overrun metal_bridge.s 'if(!$d&&s/ldr x0, \[sp, #160\]\n    lsl x2, x21, #2/ldr x0, [sp, #160]\n    lsl x2, x21, #2\n    add x2, x2, #4/){$d=1}'
+# --- gid<count guard SOLO scoring: gate-only wide-dispatch bridge variant ---
+# dispatchThreads(count+64), out MTLBuffer +256B tail 0xA5-filled by host and
+# rechecked after readback: guard present -> GREEN, guard removed -> RED.
+cp metal_bridge.s metal_bridge.s.save
+perl -0pe '
+s/    str x24, \[sp, #96\]\n    mov x4, #1/    add x15, x24, #64\n    str x15, [sp, #96]\n    mov x4, #1/;
+s/    \/\/ outbuf\n    mov x0, x24\n    mov x2, x27\n/    \/\/ outbuf\n    mov x0, x24\n    add x2, x27, #256\n/;
+s/    str x0, \[sp, #136\]\n    \/\/ satbuf/    str x0, [sp, #136]\n    bl Lwv_contents\n    add x0, x0, x27\n    mov x9, #256\n    mov w10, #0xA5\nLgsf:\n    strb w10, [x0], #1\n    subs x9, x9, #1\n    b.ne Lgsf\n    \/\/ satbuf/;
+s/    bl Lwv_copy\n    ldr x9, \[sp, #152\]/    bl Lwv_copy\n    ldr x0, [sp, #136]\n    bl Lwv_contents\n    add x0, x0, x27\n    mov x9, #256\nLgsc:\n    ldrb w10, [x0], #1\n    cmp w10, #0xA5\n    b.ne Lwm_fail\n    subs x9, x9, #1\n    b.ne Lgsc\n    ldr x9, [sp, #152]/;
+' metal_bridge.s.save > metal_bridge.s
+cmp -s metal_bridge.s metal_bridge.s.save && { echo 'guard variant: no-op' >&2; exit 1; }
+./build.sh >/dev/null
+./wave_metal_runner q30_wave.metallib "$V" > gate-guard.log 2>&1
+grep -q 'wave_metal_runner: 138 Q30WAVE2 scalar=neon=metal ok' gate-guard.log
+printf 'guard-solo: wide dispatch(count+64) WITH gid guard = GREEN ok\n'
+cp wave_q30.metal wave_q30.metal.save
+perl -0pe 's/    if \(gid >= p\.count\) \{ return; \}\n//' wave_q30.metal.save > wave_q30.metal
+cmp -s wave_q30.metal wave_q30.metal.save && { echo 'guard removal: no-op' >&2; exit 1; }
+./build.sh >/dev/null 2>&1
+if ./wave_metal_runner q30_wave.metallib "$V" >/dev/null 2>&1; then echo 'guard removal SURVIVED' >&2; exit 1; fi
+printf 'guard-solo: wide dispatch(count+64) WITHOUT gid guard = RED ok\n'
+mv wave_q30.metal.save wave_q30.metal
+mv metal_bridge.s.save metal_bridge.s
 ./build.sh >/dev/null
 ./wave_metal_runner q30_wave.metallib "$V" > gate-base.log
 grep -q 'wave_metal_runner: 138 Q30WAVE2 scalar=neon=metal ok' gate-base.log
-printf '%s\n' 'q30_wave_metal gate: frozen138 GPU scalar=neon=metal offsets alias reps custody guard, shader-teeth=13 host-teeth=10, all red=ok'
+printf '%s\n' 'q30_wave_metal gate: frozen138 GPU scalar=neon=metal offsets alias reps custody guard, shader-teeth=13 host-teeth=11 + guard-solo wide-dispatch, all red=ok'
