@@ -15,13 +15,23 @@ Target: journal v1 .fldj (packages/field/src/journal.rs, FROZEN):
   歩 count                     → tag3
   縛 dst a b                   → tag4
   束 dst n src1..srcn          → tag5
-  寫 slot n b1..bn             → tag6
+  寫 slot n b1..bn             → tag6  (n MUST equal w*h — full plane only.
+                                 emit rejects n != w*h with code 5 = shape.)
   # comment to end of line. Whitespace/newlines separate. UTF-8.
 
 ## Defaults (driver-owned, doc here = law)
   w=64 h=64 n_slots=16 seed=42
   c=0x3F800000(1.0) dt=0x3DCCCCCD(0.1) damping=0x3F7FBE77(0.999)
   dx=0x3F800000(1.0) range=0x3F800000(1.0)
+  LAW: THE BITS ARE NORMATIVE. The decimal in parentheses is a short human
+  rendering of the bits, never a source. Implementations MUST copy the u32 bit
+  pattern; they MUST NOT re-derive a constant by parsing/rounding the decimal in
+  some other precision. Exact values: 0x3F7FBE77 = 0.99900001287460327148 (= the
+  f32 nearest to 0.999, so the "0.999" annotation is CORRECT), 0x3DCCCCCD = 0.1
+  nearest, 0x3F800000 = 1.0 exact.
+  (G2 RETRACTED here: the fieldrun lane claimed 0x3F7FBE77 = 0.998969495… and that
+  f32(0.999) = 0x3F7FC077. Both false — frac(0x3F7FBE77) = 0x7FBE77 = 8371831,
+  not 8371319; 0x3F7FC077 = 0.99903053045272827148. See fieldrun/CONTRACT.md §17.)
 
 ## Token record = 16B: { u64 kind, u64 value }
   kind: 0=EOF 1=種 2=撃 3=歩 4=縛 5=束 6=寫 7=INT(value=u64) 9=界
