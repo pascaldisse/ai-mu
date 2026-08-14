@@ -458,3 +458,54 @@ GPU 実走証跡 = bridge の fd1 出力 `metal command status: 4` を門が実�
 
 UNVERIFIED: A7(実 journal ≥200 step の三経路 SHA 一致)· A8 · A9 は **未着手**。
 `--metal` は arm64 macOS 実機 GPU のみ実測。big-endian host は未検。
+
+## 14. A7 実装記(Prithvi)
+
+`gen_fld_a7.sh`(**.fld 源**生成器・shell のみ)+ `a7_gate.sh`(門・shell のみ)。新規 asm 零
+(A6 の実行体を無改造で使用)。`gate.sh` 末尾に `./a7_gate.sh` を追加。
+
+**独立性**: `gen_fld_a7.sh` は `fieldrun`/`fldj_parse.s`/`fieldc` の実装を読まぬ。参照は
+`../CONTRACT.md` の文法(`界`/`寫`/`歩`)のみ、出力は人可読 `.fld` テキスト。
+門が非註釈行を走査し実装記号(`fieldrun|fldj_parse|fieldc|q20_conv|coef|wave_|.s|.fldj`)零を強制。
+初期場は f32 の指数/仮数欄を**整数算で組む**(host 浮動小数 零)。e ∈ [118,137] ∴ |v| ∈ [2^-9,2^10] < 2048
+(§2a の rc=21 圏外)· 胞毎に指数・仮数・符号を散らす = **非一様**。
+
+**実走実測(生)**:
+```
+green   generator-independence     gen_fld_a7.sh の非註釈行に実装参照 零
+green   fieldc-compile             fld=11306B fldj=4158B
+raw     sha(a7.fld)                b83c386ac4d1bc5a7a0be1dc65954754ab0d152f04d5098c2bc7e1e13a8a51b1
+raw     sha(a7.fldj)               11e973d2722dfeb8a38b1774266380f2339f9be7a6a932797113d4daadc86925
+raw     fldj-header(48B)            46 4c 44 4a 01 00 00 00 20 00 00 00 20 00 00 00 00 00 80 3f cd cc cc 3d 77 be 7f 3f 00 00 80 3f 00 00 00 00 00 00 00 00 00 00 80 3f 02 00 00 00
+green   real-journal-32x32-200step sha=ead5a8fff10ea68936fd56bd2861de869328840c8e9a27dfcb18da919c9d3370 (scalar==neon==metal, byte 一致)
+green   gpu-evidence               metal command status: 4
+raw     flro-header                46 4c 52 4f 00 00 00 00 20 00 00 00 20 00 00 00 c8 00 00 00 00 00 00 00 af 00 00 00 00 00 00 00
+green   steps>=200                 steps=200 sat=175 (FLRO off16/off24)
+green   nonzero-evolution          sha0=7ec0c4c809a0d3d7c3335444197f0b00f383fa4351349d8ea5059c1a8aa29d13
+green   nonzero-evolution          sha200=ead5a8ff… diff_bytes=4083/4128
+raw     cells0-first8              2048 4294591538 62639496 4294961970 908908 78316456 4294954185 1084027
+raw     cells200-first8            175994898 173395924 170886056 168515726 166302587 164415367 162829334 161576353
+KILLED  tooth:step-count-199       sha=4f9e6eed… != sha200
+KILLED  tooth:init-field-phase1    sha=8d029911… != sha200
+KILLED  tooth:journal-1byte        off=100 64->65 sha=446ea00a… != sha200
+KILLED  tooth:max-cells-arg        rc=8 (max_cells=512 < 1024 胞)
+green   max-cells=1024-exact       sha=ead5a8ff… (同一)
+gate: fieldrun A7 (real fieldc journal, 32x32, 200 step, 三経路) OK
+```
+`max_cells` は門引数(既定 4096・`MAXCELLS` 可変)∴ 硬碼零。1024 丁度で同一 SHA・512 で rc=8。
+
+**時間発展が真である証**: 0 step 版(同一 `.fld`、`歩 0`)FLRO の cells = 初期場そのもの
+(`steps=0 sat=0`)。200 step 版と 4128B 中 **4083B 相違**。初頭 8 胞も全く別値 ∴ 恒等写像でない。
+`steps=200`(off16)· `sat=175`(off24)が wire に載る事も raw で確認(§2c 適合)。
+`sat>0` = kernel 内部飽和が 200 tick 中 175 胞回起きた実測値(§2a の入力 reject とは別事象、
+三経路とも同値ゆえ parity は保たれる)。
+
+**Vishnu 死枝の反証**: round12 序盤 Vishnu は「FLDJ decoder 不在 ∴ 三経路 ≥200step 一致は不成立」と
+REJECT した。本 atom で **decoder は実在し(A1..A4)**、実 `fieldc` 出力 journal 一本から
+scalar/neon/metal が 200 step 後に **FLRO byte 一致**(sha `ead5a8ff…`、実機 GPU 実走)。
+∴ 当該死枝は **反証済**。ただし反証されたのは「decoder 不在」の前提であり、
+Vishnu が同時に指摘した G1(FFT `wave_step` との bit 一致は主張不可)は**依然有効**
+— 本一致は `wave_step_reference` 意味論の内部整合であり、上流 product 経路との parity ではない。
+
+UNVERIFIED: A8(§3d 変異一括表)· A9(上流 D1/G2 修正)= 未着手。
+FLRO cell endian は host LE ∴ big-endian host 未検。`--metal` は arm64 macOS 実機のみ。

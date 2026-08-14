@@ -97,3 +97,6 @@ echo 'gate: fldj_parse A1 OK'
 
 # A6: --metal(実機 GPU)
 ./metal_gate.sh
+
+# A7: 実 fieldc journal 三経路(≥200 step)
+./a7_gate.sh
