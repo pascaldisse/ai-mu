@@ -19,6 +19,8 @@
 .extern _q20_from_bits
 .extern _fl_q30_wave_scalar
 .extern _fl_q30_wave_neon
+.extern _fl_wave_metal_init
+.extern _fl_q30_wave_metal
 
 // 局所域(sp 基準、160B):
 //   0..31  cfg{w i32,h i32,c_cur i64,c_lap i64,c_prev i64}
@@ -30,7 +32,8 @@
 //   88..107 hdr5(5*u32 LE)
 //   112    write 先 ptr
 //   120    k
-//   128    backend 函数ポインタ(既定=_fl_q30_wave_scalar · --neon で _fl_q30_wave_neon)
+//   128    backend 函数ポインタ(既定=_fl_q30_wave_scalar · --neon で _fl_q30_wave_neon
+//          · --metal <metallib> で _fr_metal_call thunk)
 _main:
     stp x29, x30, [sp, #-96]!
     mov x29, sp
@@ -51,29 +54,52 @@ _main:
     ldr x10, [x27, #8]
     ldrb w9, [x10, #0]
     cmp w9, #0x2D
-    b.ne Lbk_done
+    b.ne Lbk_metal
     ldrb w9, [x10, #1]
     cmp w9, #0x2D
-    b.ne Lbk_done
+    b.ne Lbk_metal
     ldrb w9, [x10, #2]
     cmp w9, #0x6E
-    b.ne Lbk_done
+    b.ne Lbk_metal
     ldrb w9, [x10, #3]
     cmp w9, #0x65
-    b.ne Lbk_done
+    b.ne Lbk_metal
     ldrb w9, [x10, #4]
     cmp w9, #0x6F
-    b.ne Lbk_done
+    b.ne Lbk_metal
     ldrb w9, [x10, #5]
     cmp w9, #0x6E
-    b.ne Lbk_done
+    b.ne Lbk_metal
     ldrb w9, [x10, #6]
-    cbnz w9, Lbk_done
+    cbnz w9, Lbk_metal
     adrp x9, _fl_q30_wave_neon@PAGE
     add x9, x9, _fl_q30_wave_neon@PAGEOFF
     str x9, [sp, #128]             // no-fallback: 記号を直に指す(欠落=link 不成立)
     add x27, x27, #8               // argv 進め
     sub x28, x28, #1               // argc 減
+    b Lbk_done
+
+// ---- --metal <metallib path>(硬碼禁 = path は引数)----
+Lbk_metal:
+    ldr x10, [x27, #8]
+    adrp x11, Ls_metal@PAGE
+    add x11, x11, Ls_metal@PAGEOFF
+Lbm_l:
+    ldrb w9, [x10], #1
+    ldrb w12, [x11], #1
+    cmp w9, w12
+    b.ne Lbk_done
+    cbnz w9, Lbm_l
+    cmp w28, #3
+    b.lt Lusage
+    ldr x0, [x27, #16]             // metallib path(引数、硬碼零)
+    bl _fl_wave_metal_init
+    cbnz x0, Lmetal_init_fail      // CPU fallback 無し = loud
+    adrp x9, _fr_metal_call@PAGE
+    add x9, x9, _fr_metal_call@PAGEOFF
+    str x9, [sp, #128]
+    add x27, x27, #16              // argv 進め(旗 + path)
+    sub x28, x28, #2
 Lbk_done:
     cmp w28, #3
     b.lt Lusage
@@ -347,6 +373,10 @@ Lopenfail:      mov x0, #16
     b Lreject
 Lusage:         mov x0, #17
     b Lreject
+Lmetal_init_fail: mov x0, #24
+    b Lreject
+Lmetal_fail:    mov x0, #25
+    b Lreject
 Lwritefail:     mov x0, #18
     b Lreject
 
@@ -366,6 +396,18 @@ Lreject:
     bl Lflush
     mov x0, x19
     bl _exit
+
+// ---- metal thunk: offset=0 / reps=1 固定、-1 = 非零 exit(fallback 無)----
+_fr_metal_call:
+    stp x29, x30, [sp, #-16]!
+    mov x29, sp
+    mov x4, #0                     // byte_offset [MUT:moff]
+    mov x5, #1                     // reps [MUT:mreps]
+    bl _fl_q30_wave_metal
+    cmn x0, #1
+    b.eq Lmetal_fail               // [MUT:mfail] -1 は決して黙殺せぬ
+    ldp x29, x30, [sp], #16
+    ret
 
 // ---- 補助(A1 と同型) ----
 Lapp:
@@ -472,5 +514,6 @@ _argv_out: .space 8
 .section __TEXT,__const
 .p2align 2
 Ls_nl:      .ascii "\n"
+Ls_metal:   .asciz "--metal"
 Lrej_head:  .ascii "fieldrun reject code="
 .set Lrej_head_len, . - Lrej_head
