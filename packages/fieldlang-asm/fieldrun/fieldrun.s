@@ -165,9 +165,7 @@ Largs_done:
     ldr x9, [sp, #48]
     cmp x24, x9
     b.hi Lrej_big
-    mov x9, #16384                 // arena 容量(領域実寸)
-    cmp x24, x9
-    b.hi Lrej_big
+    // arena は n から mmap で確保(固定上限 零 = 硬碼禁)。判定は引数 max_cells のみ。
     ldr w9, [x19, #44]
     uxtw x9, w9
     cmp x9, #2
@@ -201,13 +199,15 @@ Largs_done:
     ldr x9, [sp, #80]
     str x9, [sp, #24]
 
-    // ---- 三 buffer(§2d)、全域 0 ----
-    adrp x25, _bufA@PAGE
-    add x25, x25, _bufA@PAGEOFF    // cur
-    adrp x26, _bufB@PAGE
-    add x26, x26, _bufB@PAGEOFF    // prev
-    adrp x27, _bufC@PAGE
-    add x27, x27, _bufC@PAGEOFF    // scratch
+    // ---- 三 buffer(§2d)、n*4B を各々 mmap(MAP_ANON = 全域 0)----
+    lsl x9, x24, #2
+    str x9, [sp, #136]             // arena bytes
+    bl Larena
+    mov x25, x0                    // cur
+    bl Larena
+    mov x26, x0                    // prev
+    bl Larena
+    mov x27, x0                    // scratch
 
     add x21, x19, #48              // op cursor
     mov x19, #0                    // sat 累計
@@ -409,6 +409,26 @@ _fr_metal_call:
     ldp x29, x30, [sp], #16
     ret
 
+// ---- arena 一枚 = mmap(NULL, bytes, RW, ANON|PRIVATE, -1, 0)。失敗 = rc=19 loud ----
+Larena:
+    stp x29, x30, [sp, #-16]!
+    mov x29, sp
+    mov x0, #0
+    ldr x1, [sp, #(16 + 136)]
+    mov x2, #3                     // PROT_READ|PROT_WRITE
+    movz x3, #0x1002               // MAP_ANON|MAP_PRIVATE
+    mov x4, #-1
+    mov x5, #0
+    bl _mmap
+    cmn x0, #1
+    b.eq Larena_fail
+    cbz x0, Larena_fail
+    ldp x29, x30, [sp], #16
+    ret
+Larena_fail:
+    mov x0, #19
+    b Lreject
+
 // ---- 補助(A1 と同型) ----
 Lapp:
     adrp x2, _outlen@PAGE
@@ -502,9 +522,6 @@ Lpd_bad:
 .section __DATA,__bss
 .p2align 4
 _filebuf:  .space 4194304
-_bufA:     .space 65536
-_bufB:     .space 65536
-_bufC:     .space 65536
 _flro:     .space 32
 _outline:  .space 256
 _numbuf:   .space 32

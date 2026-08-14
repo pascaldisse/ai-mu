@@ -79,7 +79,8 @@ tooth() { # tooth <name> <sed-expr> <fldj> <ref-od>
   as -arch arm64 -o "$work/m.o" "$work/m.s"
   ld -arch arm64 -o "$work/m" -e _main -lSystem -lobjc -framework Metal -framework Foundation metal_bridge.o "$work/m.o" q20_conv_lib.o coef_lib.o wave_scalar.o wave_neon.o \
      -syslibroot "$(xcrun --show-sdk-path)"
-  if "$work/m" "$src" "$work/m.flro" >"$work/m.out" 2>&1; then mrc=0; else mrc=$?; fi
+  rm -f "$work/m.flro"
+  if "$work/m" "$src" "$work/m.flro" ${5:-} >"$work/m.out" 2>&1; then mrc=0; else mrc=$?; fi
   got=$(od -An -tx1 "$work/m.flro" 2>/dev/null | tr -s ' ' || :)
   if [ "$mrc" -eq 0 ] && [ "$got" = "$ref" ]; then
     echo "gate: tooth $name SURVIVED (identical FLRO)" >&2; exit 1
@@ -93,5 +94,21 @@ tooth flro-steps-zero 's|str x28, \[x9, #16\].*|str xzr, [x9, #16]|' "$work/t2.f
 tooth flro-sat-zero   's|str x19, \[x9, #24\].*|str xzr, [x9, #24]|' "$work/t3.fldj" "$ref3"
 tooth flro-magic-be   's|movk w10, #0x4F52, lsl #16.*|movz w10, #0x524F\n    movk w10, #0x464C, lsl #16|' "$work/t1.fldj" "$(od -An -tx1 "$work/t1.flro" | tr -s ' ')"
 tooth out-alias-cur   's|mov x3, x27 .*\[MUT:alias\].*|mov x3, x25|' "$work/t2.fldj" "$ref2"
+
+# ---- A8b: arena 硬碼零(Chandi blocker 再現をそのまま緑化)----
+# 129x128 = 16512 胞 > 旧固定 16384。引数 16512 で rc=0・出力 32+4n。引数未満 = rc=8。
+big=''
+k=0
+while [ $k -lt 16512 ]; do big="$big $((1065353216 + (k % 64) * 65536))"; k=$((k + 1)); done
+W=129 H=128 STEPN=2 PAYLOAD="$big" ./gen_fldj.sh "$work/t7.fldj"
+./fieldrun "$work/t7.fldj" "$work/t7.flro" 16512
+sz7=$(wc -c <"$work/t7.flro" | tr -d ' ')
+[ "$sz7" -eq $((32 + 4 * 16512)) ] || { echo "gate: 129x128 size $sz7 != 66080" >&2; exit 1; }
+printf 'green   %-22s rc=0 size=%s (max_cells=16512、旧固定 16384 超)\n' 'arena-arg-16512' "$sz7"
+ref7=$(od -An -tx1 "$work/t7.flro" | tr -s ' ')
+if ./fieldrun "$work/t7.fldj" "$work/t7b.flro" 16511 >"$work/t7b.out" 2>&1; then rc=0; else rc=$?; fi
+[ "$rc" -eq 8 ] || { echo "gate: arena under-arg rc=$rc want=8" >&2; exit 1; }
+printf 'KILLED  %-22s rc=8 %s\n' 'arena-arg-under' "$(cat "$work/t7b.out")"
+tooth arena-cap-hardcoded 's|ldr x9, \[sp, #48\]|mov x9, #16384|' "$work/t7.fldj" "$ref7" 16512
 
 echo 'gate: fieldrun A4 OK'
