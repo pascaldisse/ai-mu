@@ -23,6 +23,19 @@ Kernel 側(実装済): `n = w*h` を再算し `n != p.count` なら**全thread �
 product 一致検査)、然る後 `gid >= p.count` を守る。両検査の非空虚は門の
 `count-agreement`(shader逆極性=赤)と `host-count-mismatch`(host が count+1 を書く=赤)が採点。
 
+**gid guard 単独採点**(門専用経路): 門が bridge 変異体を組む —
+`dispatchThreads(count+64)`・out MTLBuffer `+256B` 尾部を host が 0xA5 充填し readback 後再検。
+guard 有=**GREEN 実測**(過剰thread は return、尾部無傷)、guard 行削除=**RED 実測**
+(過剰thread が尾部を破壊)。両極とも実機 GPU で走る(`gate.sh` guard-solo 節)。
+
+**境界明記**: `n != p.count` product-agreement 検査は**診断入口**。単独除去は緑のまま
+(host が count==w*h を常に保証する為本経路では死碼)。誤 count 経路の実採点は
+`host-count-mismatch`(host が count+1 を書く=赤)、検査機構の実在は `count-agreement`
+(極性反転=赤)が採点。単独除去での赤化は未主張。
+
+**資源寿命**: bridge は MTLBuffer/queue を release せぬ(new系 +1 は呼毎に残存)。正確性主張の
+外。門 process は短命で完結する為採点対象外と宣言(資源解放主張はしない)。
+
 Dispatch: `dispatchThreads(count,1,1)` tpg `(64,1,1)`、MTLSize は **間接 aggregate ABI**
 (x2/x3=pointer)で渡す。Encoder offset 非零可(4B 倍数): bridge は buffers 0/1/2 に byte offset
 を適用、runner は `0/4/28` を全走。storage = shared(options 0)。`sat_count` は **dispatch 毎に**
@@ -55,17 +68,28 @@ x2=prev, x3=out, x4=byte_offset, x5=reps)->saturations / -1(GPU未完、CPU fall
 - fixture 外 edge 6 case(1x1・w=1・h=1・飽和・64x64・65x33 tail、係数 ±2^31)—
   `gen_wave_vectors.sh <out> edge`(shell-only)が生成、runner edge mode(6 record 厳密)が GPU 実走
 - command status `4` / error `nil` を明示出力
-門実装: `./gate.sh` — 凍結138 digest → runner 独立厳密decode(残長/trailing/u64 dims) →
+Generator 独立性: `../q30_wave/gen_wave_vectors.sh` は **write-only**(fixture を読む経路無し —
+門が `cat|dd|read|od|xxd|cmp` × `wave_vectors` を走査して零を検証)、法を bash 整数算で独立
+再実装し、凍結 digest `b826a114…` を byte-exact に再生成する(門が regen digest を実測照合)。
+∴ fixture は product の複写でも product 出力の写しでもない。
+
+門実装: `./gate.sh` — 凍結138 digest → generator 独立(regen digest) → runner 独立厳密decode(残長/trailing/u64 dims) →
 実機 GPU 138×5 dispatch(offsets 0/4/28・alias cur==prev・reps=2 sat-reset・count0/負寸/u32超)
-scalar=NEON=Metal byte+sat 厳密 → fixture 3 teeth + shader 13 teeth + host 10 teeth 全赤。
+scalar=NEON=Metal byte+sat 厳密 → fixture 3 teeth + shader 13 teeth + host 11 teeth 全赤
+→ guard-solo wide-dispatch(有=緑/無=赤 両極実測)。
 
 - 変異 teeth(各々 actual GPU RED、`gate.sh` の mut() が逆弱化して赤を実測):
   shader 13: `rounding-half` `q30-scale` `sat-window` `sat-sign` `lap-centre-4x` `periodic-x`
   `periodic-y` `buffer-slot` `mul64-hi-term` `sat-count-double` `params-lo-hi`
   `round-independence` `count-agreement`
-  host 10: `host-out-buffer-index` `host-binding-swap` `host-params-length` `host-mtlsize-abi`
+  host 11: `host-out-buffer-index` `host-binding-swap` `host-params-length` `host-mtlsize-abi`
   `host-count0` `host-sat-reset` `host-status4` `host-nserror` `host-encoder-offset`
-  `host-count-mismatch`
+  `host-count-mismatch` `host-readback-overrun`(readback を count*4+4 に伸長=one-past-end、
+  runner の out 前後 0xA5 guard 32B が破壊を検知して赤 — GPU 側 one-past-end 採点の死枝の
+  代替(host copy 側)が非空虚である逆弱化実証)
+
+`teeth_kill.sh` = 全歯機械的自己攻撃: gate.sh の `mut` 行を単一真実源として各変異を単独適用
+→ 実機再走 → KILLED / NOOP-VACUOUS / SURVIVED-VACUOUS 表を raw 出力、全 KILLED のみ exit 0。
 
 custody は runner が cur/prev 独立複写を各実装呼出後に全byte比較(bridge は入力を
 MTLBuffer へ複写する為 host 入力は不変、比較が之を採点)。out 周囲 0xA5 guard 32B×2。
