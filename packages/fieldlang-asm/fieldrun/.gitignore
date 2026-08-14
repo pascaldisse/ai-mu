@@ -1,3 +1,5 @@
 fldj_parse
 *.o
 fldj-gate.*
+q20_conv
+q20-gate.*

@@ -5,3 +5,6 @@ cd "$(dirname "$0")"
 as -arch arm64 -o fldj_parse.o fldj_parse.s
 ld -arch arm64 -o fldj_parse -e _main -lSystem fldj_parse.o -syslibroot "$(xcrun --show-sdk-path)"
 echo "built: fldj_parse"
+as -arch arm64 -o q20_conv.o q20_conv.s
+ld -arch arm64 -o q20_conv -e _main -lSystem q20_conv.o -syslibroot "$(xcrun --show-sdk-path)"
+echo "built: q20_conv"
