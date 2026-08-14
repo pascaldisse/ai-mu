@@ -760,3 +760,38 @@ N      sat    RMSREF        RMSREL        MEDREL        P95REL        cells
   **但し真の上限は誤差でなく飽和**: 振幅が Q20 域(|v|<2^11)を超えれば 1 step で破綻(上記(1))。
   ∴ 実用則 = 「**sat=0 を保つ限り** 200step の相対誤差は 1.1e-4 級、~10^4 step まで 1e-3 未満」。
 - 保証せぬ物(§17 の通り): 個別胞の最悪誤差 · bit 一致 · product(FFT)経路(**G1 存続**) · 飽和走。
+
+### §17c A7 門の飽和限定(Chandi・門碼 `a7_gate.sh` `69f21f2`)
+
+**因**: §17b(1) の実測で、既定 A7 振幅は **1 step 目で飽和**(sat=47→175)∴ fieldrun 出力は
+f32 reference と相対 O(1) の別物。然るに A7 門は三経路 byte 一致のみを見る ∴ 緑のまま。
+**「A7 緑」を「f32 意味論一致」と読む誤読の余地が門の出力自体に在った** = 誇大主張の温床。
+
+**選択 = ②(SAT ラベル + 非飽和 vector 追加)。①(既定振幅を下げて golden 再凍結)は死枝**:
+- 因1: 飽和挙動それ自体が三経路一致の検査対象として価値有り(飽和は分岐を伴う ∴
+  scalar/neon/metal が同一に飽和する事は非自明な性質)。①は之を捨てる。
+- 因2: 既存 golden `63f868bc…` の再凍結 = 回帰基準の破壊。②は既定走を不変に保つ ∴ 回帰零。
+- 因3: 門の欠陥は「振幅が悪い」ではなく「**主張の範囲が明示されぬ**」事 ∴ 治療は表示であり値の変更に非ず。
+
+**規律(sat = 門の一級市民)**:
+- 各 vector は飽和級 `SAT|NONSAT` を**事前宣言**し、FLRO off24 の実測 sat と照合。
+  食い違いは**両方向で赤**(NONSAT 宣言が飽和 = 退行検知 / SAT 宣言が sat=0 = 宣言腐敗)。
+- `sat>0` の走は門の出力行が `SAT` で始まり、`f32 意味論一致を主張せぬ` と明記する。
+  当該走が主張するのは**三経路 byte 一致のみ**。
+- 非飽和 vector(`NS_EBASE=118 NS_ESPAN=6`・32x32・200step)を新設。之が
+  **f32 意味論 parity(§17b(2): RMSREL(200)=1.101e-4 ≤ 1e-3)を主張し得る唯一の A7 走**。
+- sat 読出も `od -An -v`(`-v` 必須 = §15b の骸継承)。
+
+**新 golden(実測凍結・Chandi)**:
+```
+nonsat-journal-32x32-200step  sha=b44380767643728b27d526c765d62e9e8841baccf9532dbd9c3dd7159394f7c3
+  (scalar==neon==metal, byte 一致・実機 GPU `metal command status: 4`・sat=0・steps=200)
+sha(a7ns.fld) = c5a76e41842b7acfa8889aeba5636ca01adc1e627cfec2cc1cd82b99ce3afbe0
+不変 golden: A7 既定 63f868bc673b… / 4x4 33074917e723…(②選択 ∴ 再凍結せず)
+```
+
+**§14 及び round12 総括への限定追記**: 「実 fieldc journal 一本から三経路が 200 step 後に
+FLRO byte 一致(`63f868bc…`)」は**真**であるが、当該走は **sat=175 の飽和走** ∴
+之を以て「fieldrun が f32 `wave_step_reference` 意味論を 200 step 保つ」とは**言えぬ**。
+その主張の根拠は非飽和 vector(`b443807676…`・sat=0)と §17b(2) の統計のみ。
+G1(product=FFT との parity)は依然**存続**。
