@@ -4,3 +4,8 @@ test_emit
 test_lexer
 fieldc
 *.fldj
+
+# q30 assembly build artifacts
+q30/*.o
+q30/q30_selftest
+q30/q30_bench
