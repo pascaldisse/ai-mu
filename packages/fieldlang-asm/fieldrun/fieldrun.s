@@ -6,7 +6,8 @@
 // 記号: _coef_from_header(A3) · _q20_from_bits(A2) · _fl_q30_wave_scalar(q30_wave)
 // rc: 0 成功 · 2 header短 · 3 magic · 4 version · 5 w==0 · 6 h==0 · 7 w*h溢
 //     8 w*h>上限 · 9 n_slots<2 · 10 n_slots>上限 · 12 未知tag · 13 slot>=n_slots
-//     26 slot table 寸法溢
+//     26 slot table 寸法溢 · 27 duplicate WriteRaw slot
+//     28 mmap custody 残(cleanup 欠) · 29 munmap 失敗
 //     14 op切断 · 15 len!=w*h · 16 open/read · 17 用法 · 18 出力書込失敗
 //     20 非有限payload · 21 範囲外payload · 22 非canonical · 23 不変式
 // FP/SIMD レジスタ・FP 命令 零(門が二重走査で強制)。
@@ -45,6 +46,7 @@
 //   192    Lslot_ptr の x30 退避(再入無し)
 //   200    slot 一枚の byte 数 = n*4
 //   208    Lslot_ptr の index 退避
+//   216    slot 既書 flag 表(mmap、n_slots B、duplicate WriteRaw 拒絶)
 //   128    backend 函数ポインタ(既定=_fl_q30_wave_scalar · --neon で _fl_q30_wave_neon
 //          · --metal <metallib> で _fr_metal_call thunk)
 _main:
@@ -55,7 +57,7 @@ _main:
     stp x23, x24, [sp, #48]
     stp x25, x26, [sp, #64]
     stp x27, x28, [sp, #80]
-    sub sp, sp, #224               // 208 + 16 使用(16 整列)
+    sub sp, sp, #240               // 216 + 8 使用(16 整列)
     mov x28, x0                    // argc
     mov x27, x1                    // argv
     // ---- backend 選択(既定=scalar、前置旗 --neon のみ) ----
@@ -209,8 +211,8 @@ Largs_done_have:
     uxtw x9, w9
     cmp x9, #2
     b.lo Lrej_slots_lo
-    ldr x10, [sp, #160]            // max_slots(引数、硬碼零) [MUT:slot-cap]
-    cmp x9, x10
+    ldr x10, [sp, #160]            // max_slots(引数、硬碼零)
+    cmp x9, x10                    // [MUT:slot-cap]
     b.hi Lrej_slots_hi
     str x9, [sp, #184]             // n_slots(硬碼零 = header 従属)
     // slot table = n_slots*8B、u64 溢/isize guard
@@ -222,6 +224,10 @@ Largs_done_have:
     str x11, [sp, #136]
     bl Larena                      // MAP_ANON = 全域 0 ∴ 全 slot 未確保印
     str x0, [sp, #168]
+    ldr x9, [sp, #184]             // 既書 flag 表 = n_slots B(溢無 ∵ n_slots≤u32)
+    str x9, [sp, #136]
+    bl Larena
+    str x0, [sp, #216]
 
     // ---- 係数(§2b, A3 の ABI) ----
     ldr w9, [x19, #16]
@@ -274,9 +280,9 @@ Lop_write:
     b.lo Lrej_trunc
     ldr w10, [x21, #1]
     uxtw x10, w10
-    ldr x9, [sp, #184]             // n_slots(硬碼 2 零) [MUT:slot-cap]
+    ldr x9, [sp, #184]             // n_slots(硬碼 2 零)
     cmp x10, x9
-    b.hs Lrej_slot                 // [MUT:slot-index]
+    b.hs Lrej_slot
     ldr w11, [x21, #5]
     uxtw x11, w11
     cmp x11, x24
@@ -285,10 +291,16 @@ Lop_write:
     add x12, x12, #9
     cmp x15, x12
     b.lo Lrej_trunc
+    // duplicate WriteRaw(同一 slot 二度)= malformed ∴ loud reject
+    ldr x13, [sp, #216]
+    ldrb w14, [x13, x10]
+    cbnz w14, Lrej_dup
+    mov w14, #1
+    strb w14, [x13, x10]
     // 宛先 = 任意の合法 slot(検査後にのみ確保 = 副作用は受理後)
-    mov x0, x10
+    mov x0, x10                    // [MUT:slot-index]
     bl Lslot_ptr                   // [MUT:slottab]
-    str x0, [sp, #112]             // [MUT:slot-index]
+    str x0, [sp, #112]
     add x14, x21, #9
     str x14, [sp, #56]
     mov x14, #0
@@ -401,21 +413,29 @@ Lcl_l:
     ldr x0, [x9, x23, lsl #3]
     cbz x0, Lcl_next               // 未確保 slot = 解放不要
     ldr x1, [sp, #200]
-    bl _munmap                     // [MUT:cleanup] [MUT:slot-cleanup]
+    bl Lunmap_one                  // [MUT:cleanup] [MUT:slot-cleanup]
 Lcl_next:
     add x23, x23, #1
     b Lcl_l
 Lcl_end:
     ldr x0, [sp, #176]
     ldr x1, [sp, #200]
-    bl _munmap                     // scratch [MUT:cleanup] [MUT:slot-cleanup]
+    bl Lunmap_one                  // scratch [MUT:cleanup] [MUT:slot-cleanup]
     ldr x0, [sp, #168]
     ldr x1, [sp, #184]
     lsl x1, x1, #3
-    bl _munmap                     // slot table [MUT:cleanup] [MUT:slot-cleanup]
+    bl Lunmap_one                  // slot table [MUT:cleanup] [MUT:slot-cleanup]
+    ldr x0, [sp, #216]
+    ldr x1, [sp, #184]
+    bl Lunmap_one                  // flag 表 [MUT:cleanup] [MUT:slot-cleanup]
     ldr x0, [sp, #152]
     ldr x1, [sp, #144]
-    bl _munmap                     // file buffer [MUT:cleanup]
+    bl Lunmap_one                  // file buffer [MUT:cleanup]
+    // custody 台帳: 生存 mapping 残存 = rc=28 loud(leaks 不在でも cleanup 欠を捕む)
+    adrp x9, _livemaps@PAGE
+    add x9, x9, _livemaps@PAGEOFF
+    ldr x10, [x9]
+    cbnz x10, Lrej_leak
     mov x0, #0
     bl _exit
 
@@ -445,6 +465,12 @@ Lrej_tag:       mov x0, #12
 Lrej_slot:      mov x0, #13
     b Lreject
 Lrej_ovf:       mov x0, #26
+    b Lreject
+Lrej_dup:       mov x0, #27
+    b Lreject
+Lrej_leak:      mov x0, #28
+    b Lreject
+Lrej_unmap:     mov x0, #29
     b Lreject
 Lrej_trunc:     mov x0, #14
     b Lreject
@@ -526,11 +552,34 @@ Larena:
     cmn x0, #1
     b.eq Larena_fail
     cbz x0, Larena_fail
+    adrp x9, _livemaps@PAGE
+    add x9, x9, _livemaps@PAGEOFF
+    ldr x10, [x9]
+    add x10, x10, #1               // custody 台帳 +1
+    str x10, [x9]
     ldp x29, x30, [sp], #16
     ret
 Larena_fail:
     mov x0, #19
     b Lreject
+
+// ---- Lunmap_one: x0=ptr(0 は無視)・x1=bytes。munmap + 台帳 -1。
+//      解放と台帳を同一呼出しに束ねる ∴ call を削る変異 = rc=28 で必ず赤。
+Lunmap_one:
+    cbz x0, Lu1_ret_direct
+    stp x29, x30, [sp, #-16]!
+    mov x29, sp
+    bl _munmap
+    cbnz x0, Lrej_unmap            // 解放失敗 = 黙殺せぬ
+    adrp x9, _livemaps@PAGE
+    add x9, x9, _livemaps@PAGEOFF
+    ldr x10, [x9]
+    sub x10, x10, #1
+    str x10, [x9]
+    ldp x29, x30, [sp], #16
+    ret
+Lu1_ret_direct:
+    ret
 
 // ---- 補助(A1 と同型) ----
 Lapp:
@@ -634,6 +683,7 @@ _outline:  .space 256
 _numbuf:   .space 32
 _outlen:   .space 8
 _argv_out: .space 8
+_livemaps: .space 8              // 生存 mmap 数(custody 台帳・入力規模非依存のスカラ)
 
 .section __TEXT,__const
 .p2align 2

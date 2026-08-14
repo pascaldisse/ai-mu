@@ -96,11 +96,14 @@ if command -v leaks >/dev/null 2>&1; then
   cmp -s fieldrun.s "$work/slot-cleanup.s" && { echo 'gate: cleanup mutant unchanged' >&2; exit 1; }
   as -arch arm64 -o "$work/slot-cleanup.o" "$work/slot-cleanup.s"
   ld -arch arm64 -o "$work/slot-cleanup" -e _main -lSystem -lobjc -framework Metal -framework Foundation "$work/slot-cleanup.o" q20_conv_lib.o coef_lib.o wave_scalar.o wave_neon.o metal_bridge.o -syslibroot "$(xcrun --show-sdk-path)"
-  if leaks --atExit -- "$work/slot-cleanup" "$work/base.fldj" "$work/slot-cleanup.flro" "$max_cells" "$max_bytes" "$max_slots" >"$work/slot-cleanup.log" 2>&1; then lrc=0; else lrc=$?; fi
-  if [ "$lrc" -eq 0 ] && grep -E '0 leaks for 0 total leaked bytes|0 leaks' "$work/slot-cleanup.log" >/dev/null; then
-    echo 'SURVIVED slot-cleanup: deleted munmap leaked nothing' >&2; exit 1
+  # 注(Vishnu): `leaks` は MAP_ANON mmap を追跡せぬ ∴ leaks 単独では此 mutant を殺せぬ。
+  # 故に一次判定 = 実体の custody 台帳(生存 mapping 残 → rc≠0 loud)。leaks は二次証拠。
+  if "$work/slot-cleanup" "$work/base.fldj" "$work/slot-cleanup.flro" "$max_cells" "$max_bytes" "$max_slots" >"$work/slot-cleanup.direct.log" 2>&1; then drc=0; else drc=$?; fi
+  leaks --atExit -- "$work/slot-cleanup" "$work/base.fldj" "$work/slot-cleanup.leaks.flro" "$max_cells" "$max_bytes" "$max_slots" >"$work/slot-cleanup.log" 2>&1 || true
+  if [ "$drc" -eq 0 ]; then
+    echo 'SURVIVED slot-cleanup: deleted munmap accepted silently' >&2; exit 1
   fi
-  printf 'KILLED  %-28s leaks rc=%s\n' 'slot-cleanup' "$lrc"
+  printf 'KILLED  %-28s rc=%s %s\n' 'slot-cleanup' "$drc" "$(head -1 "$work/slot-cleanup.direct.log")"
   printf 'green   %-28s leaks --atExit=0\n' 'mmap-cleanup'
 else
   echo 'UNVERIFIED mmap-cleanup: leaks unavailable' >&2
