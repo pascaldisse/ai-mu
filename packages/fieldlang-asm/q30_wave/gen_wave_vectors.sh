@@ -6,7 +6,8 @@
 # Wire (Q30WAVE2\0): per record LE u16 namelen, name, i32 w, i32 h,
 # i64 c_cur,c_lap,c_prev, i32 cur[n], prev[n], want[n], u64 sat; final u16 0.
 set -eu
-OUT=${1:?usage: gen_wave_vectors.sh <outfile>}
+OUT=${1:?usage: gen_wave_vectors.sh <outfile> [edge]}
+MODE=${2:-corpus}
 : > "$OUT"
 
 I32_MAX=2147483647
@@ -72,6 +73,31 @@ emit_case() {
 }
 
 put_str 'Q30WAVE2'; BUF+='\000'
+
+if [ "$MODE" = edge ]; then
+    # 6 beyond-fixture edge cases (1x1 / w=1 / h=1 / saturation / 64x64 / 65x33 tail),
+    # coefficients at the i64 boundaries c_cur=±2^31, |c_lap|=2^29.
+    CUR=(2147483647); PREV=(-2147483648)
+    emit_case 'edge-1x1' 1 1 2147483648 536870912 -2147483648
+    CUR=(); PREV=()
+    for ((i = 0; i < 7; i++)); do CUR[i]=${EXTREMA[(i * 5 + 7) % 16]}; PREV[i]=${EXTREMA[(i * 3 + 11) % 16]}; done
+    emit_case 'edge-w1' 1 7 -2147483648 -536870912 2147483648
+    emit_case 'edge-h1' 7 1 2147483648 536870912 -2147483648
+    CUR=(); PREV=()
+    for ((i = 0; i < 36; i++)); do CUR[i]=$I32_MAX; PREV[i]=$I32_MAX; done
+    emit_case 'edge-sat' 6 6 2147483648 536870912 2147483647
+    n=4096; CUR=(); PREV=()
+    for ((i = 0; i < n; i++)); do lcg; CUR[i]=$RND; done
+    for ((i = 0; i < n; i++)); do lcg; PREV[i]=$RND; done
+    emit_case 'edge-64x64' 64 64 2147483648 536870912 -2147483648
+    n=2145; CUR=(); PREV=()
+    for ((i = 0; i < n; i++)); do lcg; CUR[i]=$RND; done
+    for ((i = 0; i < n; i++)); do lcg; PREV[i]=$RND; done
+    emit_case 'edge-65x33' 65 33 -2147483648 536870912 2147483648
+    put_u16 0
+    flush
+    exit 0
+fi
 
 # (1) degenerate dims x 7 coefficient triples; EXTREMA-patterned fields
 for wh in '1 1' '1 2' '2 1' '1 5' '5 1' '1 8' '8 1' '2 2' '3 3' '4 4' '5 4' '4 5' '7 3' '3 7'; do

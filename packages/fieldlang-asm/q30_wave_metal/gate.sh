@@ -7,7 +7,7 @@ echo "$D  $V" | shasum -a 256 -c -
 # Forbidden source scan: no Rust/C/Swift/Python source on the product path.
 if find . -maxdepth 1 -type f \( -name '*.rs' -o -name '*.c' -o -name '*.swift' -o -name '*.py' \) | grep -q .; then exit 1; fi
 if grep -nEi 'rust|cargo|rustc|wgpu|swiftc|python' ./*.s build.sh; then exit 1; fi
-trap 'rm -f *.o *.air wave_metal_runner q30_wave.metallib gate-base.log; for f in wave_q30.metal metal_bridge.s; do test -f "$f.save" && mv "$f.save" "$f"; done' EXIT HUP INT TERM
+trap 'rm -f *.o *.air wave_metal_runner q30_wave.metallib gate-base.log gate-edge.log wv.edge; for f in wave_q30.metal metal_bridge.s; do test -f "$f.save" && mv "$f.save" "$f"; done' EXIT HUP INT TERM
 ./build.sh
 # live GPU corpus: 138 vectors, scalar=NEON=Metal, offsets 0/4/28, alias, reps,
 # per-dispatch saturation reset, count0/negative/overflow host checks.
@@ -31,6 +31,16 @@ SZ=$(wc -c < "$V")
 dd if="$V" of=wv.trunc bs=1 count=$((SZ-17)) >/dev/null 2>&1
 if ./wave_metal_runner q30_wave.metallib wv.trunc >/dev/null 2>&1; then rm -f wv.trunc; exit 1; fi
 rm -f wv.trunc; printf 'mutation fixture-truncated rejected=ok\n'
+# beyond-fixture edge corpus (1x1 / w=1 / h=1 / saturation / 64x64 / 65x33 tail, c_cur=±2^31):
+# deterministic shell generator, live GPU, scalar=NEON=Metal exact.
+../q30_wave/gen_wave_vectors.sh wv.edge edge
+./wave_metal_runner q30_wave.metallib wv.edge edge > gate-edge.log
+grep -q 'wave_metal_runner: 6 edge Q30WAVE2 scalar=neon=metal ok' gate-edge.log
+test "$(grep -c 'metal command status: 4' gate-edge.log)" -eq 30
+printf 'edge6 gpu run=ok (30 dispatches status4)\n'
+printf '\377' | dd of=wv.edge bs=1 seek=9 conv=notrunc >/dev/null 2>&1
+if ./wave_metal_runner q30_wave.metallib wv.edge edge >/dev/null 2>&1; then rm -f wv.edge; exit 1; fi
+rm -f wv.edge; printf 'mutation edge-corruption rejected=ok\n'
 # mut <name> <file> <perl-expr>: apply, rebuild, the live GPU run must go RED.
 mut() { n=$1; f=$2; e=$3; cp "$f" "$f.save"; perl -0pe "$e" "$f.save" > "$f"; cmp -s "$f" "$f.save" && { echo "mutation $n: no-op" >&2; exit 1; }; if ./build.sh >/dev/null 2>&1 && ./wave_metal_runner q30_wave.metallib "$V" >/dev/null 2>&1; then echo "mutation $n SURVIVED" >&2; mv "$f.save" "$f"; ./build.sh >/dev/null; exit 1; fi; mv "$f.save" "$f"; printf 'mutation %s rejected=ok\n' "$n"; }
 # --- shader teeth (12), each a distinct law clause, each RED on the real GPU ---
@@ -46,10 +56,12 @@ mut mul64-hi-term        wave_q30.metal 'if(!$d&&s/hi \+= a\.lo \* uint\(b\.hi\)
 mut sat-count-double     wave_q30.metal 'if(!$d&&s/atomic_fetch_add_explicit\(sat_count, 1u/atomic_fetch_add_explicit(sat_count, 2u/){$d=1}'
 mut params-lo-hi         wave_q30.metal 'if(!$d&&s/k_cur\.hi  = p\.c_cur_hi;/k_cur.hi  = 0;/){$d=1}'
 mut round-independence   wave_q30.metal 'if(!$d&&s/add64\(acc, q30_round\(mul64\(k_lap, lap\)\)\)/add64(acc, q30_round(add64(mul64(k_lap, lap), from_i32(1))))/){$d=1}'
+mut count-agreement      wave_q30.metal 'if(!$d&&s/if \(n != p\.count\) \{ return; \}/if (n == p.count) { return; }/){$d=1}'
 # --- host bridge teeth (9), hand-assembly encoder/ABI clauses, each RED live ---
 mut host-out-buffer-index metal_bridge.s 'if(!$d&&s/mov x2, x21\n    mov x3, x23\n    mov x4, #2/mov x2, x21\n    mov x3, x23\n    mov x4, #5/){$d=1}'
 mut host-binding-swap     metal_bridge.s 'if(!$d&&s/mov x2, x19\n    mov x3, x23\n    mov x4, #0/mov x2, x20\n    mov x3, x23\n    mov x4, #0/){$d=1}'
-mut host-params-length    metal_bridge.s 'if(!$d&&s/mov x3, #32\n    mov x4, #4/mov x3, #8\n    mov x4, #4/){$d=1}'
+mut host-params-length    metal_bridge.s 'if(!$d&&s/mov x3, #40\n    mov x4, #4/mov x3, #8\n    mov x4, #4/){$d=1}'
+mut host-count-mismatch   metal_bridge.s 'if(!$d&&s/str w21, \[sp, #128\]            \/\/ host-side u64-checked count into Params/add w16, w21, #1\n    str w16, [sp, #128]/){$d=1}'
 mut host-mtlsize-abi      metal_bridge.s 'if(!$d&&s/str x24, \[sp, #96\]/sub x16, x24, #1\n    str x16, [sp, #96]/){$d=1}'
 mut host-count0           metal_bridge.s 'if(!$d&&s/Lwm_zero:\n    mov x0, #0/Lwm_zero:\n    mov x0, #1/){$d=1}'
 mut host-sat-reset        metal_bridge.s 'if(!$d&&s/str wzr, \[x9\]                  \/\/ sat reset per dispatch/nop/){$d=1}'
@@ -59,4 +71,4 @@ mut host-encoder-offset   metal_bridge.s 'if(!$d&&s/mov x2, x19\n    mov x3, x23
 ./build.sh >/dev/null
 ./wave_metal_runner q30_wave.metallib "$V" > gate-base.log
 grep -q 'wave_metal_runner: 138 Q30WAVE2 scalar=neon=metal ok' gate-base.log
-printf '%s\n' 'q30_wave_metal gate: frozen138 GPU scalar=neon=metal offsets alias reps custody guard, shader-teeth=12 host-teeth=9, all red=ok'
+printf '%s\n' 'q30_wave_metal gate: frozen138 GPU scalar=neon=metal offsets alias reps custody guard, shader-teeth=13 host-teeth=10, all red=ok'

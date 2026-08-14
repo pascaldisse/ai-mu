@@ -7,8 +7,13 @@
 //   buffer(4)     : constant Params&         { uint width, height;
 //                                              uint c_cur_lo; int c_cur_hi;
 //                                              uint c_lap_lo; int c_lap_hi;
-//                                              uint c_prev_lo; int c_prev_hi; } 32 bytes
-//   dispatch      : dispatchThreads(width*height,1,1) tpg (64,1,1); kernel guards gid too.
+//                                              uint c_prev_lo; int c_prev_hi;
+//                                              uint count; uint pad; } 40 bytes
+//   count         : host-side u64-checked width*height (u32-overflow rejected on the
+//                   host before any dispatch). The kernel recomputes n = w*h and
+//                   refuses to run any thread unless n == count (product agreement),
+//                   then guards gid < count.
+//   dispatch      : dispatchThreads(count,1,1) tpg (64,1,1); kernel guards gid too.
 //   lane law      : lap = cur[y][x-1]+cur[y][x+1]+cur[y-1][x]+cur[y+1][x] - 4*cur[y][x]
 //                   (every index periodic; width==1 or height==1 wrap onto themselves)
 //                   q(c,v) = (c*v + 2^29) arith>>30 , computed per coefficient independently
@@ -28,6 +33,7 @@ struct Params {
     uint c_cur_lo;  int c_cur_hi;
     uint c_lap_lo;  int c_lap_hi;
     uint c_prev_lo; int c_prev_hi;
+    uint count;     uint pad;
 };
 
 struct i64p { uint lo; int hi; };
@@ -86,7 +92,8 @@ kernel void q30_wave(device const int *cur     [[buffer(0)]],
                      uint gid [[thread_position_in_grid]]) {
     uint w = p.width, h = p.height;
     uint n = w * h;
-    if (gid >= n) { return; }
+    if (n != p.count) { return; }   // host/kernel dimensions-product agreement
+    if (gid >= p.count) { return; }
     uint y = gid / w;
     uint x = gid - y * w;
 

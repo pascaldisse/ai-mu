@@ -28,6 +28,7 @@
 
 _main:
     sub sp, sp, #128
+    str x0, [sp, #88]               // argc: 4th arg selects the 6-case edge corpus
     cmp w0, #3
     b.lt Lfail
     mov x19, x1                     // argv (x19 callee-saved: restored via exit only)
@@ -420,8 +421,16 @@ Lok:
     cmp x9, x16
     b.ne Lfail                      // trailing bytes forbidden
     ldr x10, [sp, #24]
+    ldr x11, [sp, #88]
+    cmp x11, #4
+    b.ge Lexpect6
     cmp x10, #138
     b.ne Lfail
+    b Lcountok
+Lexpect6:
+    cmp x10, #6
+    b.ne Lfail
+Lcountok:
     // host adversarial checks (no fixture needed):
     // count==0 -> 0 without any dispatch or write
     adrp x0, _wcfg@PAGE
@@ -477,8 +486,17 @@ Lok:
     bl _fl_q30_wave_metal
     cmn x0, #1
     b.ne Lfail
+    ldr x11, [sp, #88]
+    cmp x11, #4
+    b.ge Ledgemsg
     adrp x0, Lokmsg@PAGE
     add x0, x0, Lokmsg@PAGEOFF
+    bl _fl_wput
+    mov x0, #0
+    b Lexit
+Ledgemsg:
+    adrp x0, Lokedge@PAGE
+    add x0, x0, Lokedge@PAGEOFF
     bl _fl_wput
     mov x0, #0
     b Lexit
@@ -503,4 +521,5 @@ _wcustprev: .space 65536
 _wcfg:     .space 32
 .section __TEXT,__cstring,cstring_literals
 Lokmsg: .asciz "wave_metal_runner: 138 Q30WAVE2 scalar=neon=metal ok (offsets 0/4/28, alias, reps, count0/neg/overflow)\n"
+Lokedge: .asciz "wave_metal_runner: 6 edge Q30WAVE2 scalar=neon=metal ok\n"
 Lbadmsg: .asciz "wave_metal_runner: failure\n"

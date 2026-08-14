@@ -247,8 +247,8 @@ Lwpdv_out:
 //   width==0 or height==0: no read, no write, returns 0.
 //   Host-side checked u64 count = width*height; negative dims or a product that
 //   leaves u32 range are rejected (-1) before any Metal call.
-// Frame: [16..80]=x19..x28, [96..127]=Params(32B), [128]=outbuf, [136]=satbuf,
-//        [144]=satptr, [152]=out dst, [160]=cur src, [168]=prev src
+// Frame: [16..80]=x19..x28, [96..135]=Params(40B: w,h,3xi64 coeff lo/hi, u32 count, pad),
+//        [136]=outbuf, [144]=satbuf, [152]=satptr, [160]=out dst, [168]=cur src, [176]=prev src
 _fl_q30_wave_metal:
     stp x29, x30, [sp, #-192]!
     mov x29, sp
@@ -257,9 +257,9 @@ _fl_q30_wave_metal:
     stp x23, x24, [sp, #48]
     stp x25, x26, [sp, #64]
     stp x27, x28, [sp, #80]
-    str x3, [sp, #152]
-    str x1, [sp, #160]
-    str x2, [sp, #168]
+    str x3, [sp, #160]
+    str x1, [sp, #168]
+    str x2, [sp, #176]
     mov x22, x4                    // byte offset
     mov x23, x5                    // reps
     // load + check dims; u64 checked count
@@ -281,6 +281,8 @@ _fl_q30_wave_metal:
     str x11, [sp, #112]
     ldr x11, [x0, #24]
     str x11, [sp, #120]
+    str w21, [sp, #128]            // host-side u64-checked count into Params
+    str wzr, [sp, #132]            // pad
     cmp x23, #1
     b.lt Lwm_bad
     bl _objc_autoreleasePoolPush
@@ -299,7 +301,7 @@ _fl_q30_wave_metal:
     mov x25, x0
     bl Lwv_contents
     add x0, x0, x22
-    ldr x1, [sp, #160]
+    ldr x1, [sp, #168]
     lsl x2, x21, #2
     bl Lwv_copy
     // prevbuf
@@ -310,7 +312,7 @@ _fl_q30_wave_metal:
     mov x26, x0
     bl Lwv_contents
     add x0, x0, x22
-    ldr x1, [sp, #168]
+    ldr x1, [sp, #176]
     lsl x2, x21, #2
     bl Lwv_copy
     // outbuf
@@ -318,24 +320,24 @@ _fl_q30_wave_metal:
     mov x2, x27
     bl Lwv_newbuf
     cbz x0, Lwm_fail
-    str x0, [sp, #128]
+    str x0, [sp, #136]
     // satbuf (4 bytes)
     mov x0, x24
     mov x2, #4
     bl Lwv_newbuf
     cbz x0, Lwm_fail
-    str x0, [sp, #136]
-    bl Lwv_contents
     str x0, [sp, #144]
+    bl Lwv_contents
+    str x0, [sp, #152]
     // reps dispatches; saturation counter reset before each one.
 Lwm_reploop:
     cbz x23, Lwm_read
-    ldr x9, [sp, #144]
+    ldr x9, [sp, #152]
     str wzr, [x9]                  // sat reset per dispatch
     mov x0, x25
     mov x1, x26
-    ldr x2, [sp, #128]
-    ldr x3, [sp, #136]
+    ldr x2, [sp, #136]
+    ldr x3, [sp, #144]
     mov x4, x22
     mov x5, x21
     add x6, sp, #96
@@ -345,13 +347,13 @@ Lwm_reploop:
     b Lwm_reploop
 Lwm_read:
     // copy out field back (bytewise; dst alignment not assumed)
-    ldr x0, [sp, #128]
+    ldr x0, [sp, #136]
     bl Lwv_contents
     add x1, x0, x22
-    ldr x0, [sp, #152]
+    ldr x0, [sp, #160]
     lsl x2, x21, #2
     bl Lwv_copy
-    ldr x9, [sp, #144]
+    ldr x9, [sp, #152]
     ldr w19, [x9]
     mov x0, x28
     bl _objc_autoreleasePoolPop
@@ -494,14 +496,14 @@ Lwv_dispatch:
     mov x3, #0
     mov x4, #3
     bl _objc_msgSend
-    // setBytes:length:atIndex: — Params, 32 bytes, index 4
+    // setBytes:length:atIndex: — Params, 40 bytes, index 4
     adrp x0, Lw_setbytes@PAGE
     add x0, x0, Lw_setbytes@PAGEOFF
     bl _sel_registerName
     mov x1, x0
     mov x0, x27
     mov x2, x25
-    mov x3, #32
+    mov x3, #40
     mov x4, #4
     bl _objc_msgSend
     // MTLSize aggregates pass indirectly (x2/x3 = pointers): (count,1,1) tpg (64,1,1)
