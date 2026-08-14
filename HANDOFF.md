@@ -1,30 +1,43 @@
-# HANDOFF — fldj-oracle-r12(最新 = Prithvi, L3孫, 建役)
+# HANDOFF — fldj-oracle-r12(最新 = Akasha, L3孫, 建役)
 
-状態: **A7 完**(実 fieldc journal 三経路 ≥200step)。A1..A7 全緑。次 = **A8**。
+状態: **A8 完 + A8b 完**(Chandi blocker 閉)。A1..A8b 全緑。次 = **A9**。
 
 ## 直近 commit
-- `79bcae3` A7 — `gen_fld_a7.sh`(独立 .fld 生成器)+ `a7_gate.sh`(門)· `gate.sh` に連結
+- `3ad7090` CONTRACT §16(A8b 実装記)
+- `54a85d9` A8b — arena 固定 16384 除去(n*4B ×3 を mmap)・判定は引数 max_cells のみ・rc=19(mmap 失敗)
+- `2f6374d` CONTRACT §15(A8 実装記)
+- `ff20570` A8 — `teeth_kill.sh`(§3d 残余変異 6 + A1..A7 全歯一括表)
 
 ## 実測(生)
 ```
-green   real-journal-32x32-200step sha=ead5a8fff10ea68936fd56bd2861de869328840c8e9a27dfcb18da919c9d3370 (scalar==neon==metal)
-green   gpu-evidence               metal command status: 4
-green   steps>=200                 steps=200 sat=175
-green   nonzero-evolution          sha0=7ec0c4c809a0d3d7c3335444197f0b00f383fa4351349d8ea5059c1a8aa29d13 diff_bytes=4083/4128
-KILLED  step-199 / init-field-phase1 / journal-1byte(off100) / max-cells-arg(rc=8)
-gate: fieldrun A7 OK
+KILLED  truncation-check-removed   baseline rc=14 -> mutant rc=12
+KILLED  trailing-byte-check-removed baseline rc=14 -> mutant rc=12
+KILLED  bad-tag-check-removed      baseline rc=12 -> mutant rc=0
+KILLED  bad-len-check-removed      baseline rc=15 -> mutant rc=12
+KILLED  wh-32bit-multiply          baseline rc=8 -> mutant rc=15
+green   backend-forced-failure     rc=24 出力 file 零
+KILLED  metal-init-check-removed   baseline rc=24 -> mutant rc=25
+green   arena-arg-16512            rc=0 size=66080 (129x128=16512 胞・引数 16512)
+KILLED  arena-arg-under            rc=8 (引数 16511)
+KILLED  arena-cap-hardcoded        rc=8 output differs (硬碼再導入)
+合計: KILLED=79 green=37 SURVIVED=0 ; gate: fieldrun A8 (teeth_kill 一括表) OK
 ```
-既存門 rc=0: `fieldrun/gate.sh`(A1-A7)· `fieldlang-asm/gate.sh` · `q30_wave/gate.sh` · `q30_wave_metal/gate.sh`
+回帰零: `4x4 a85a4cc0…` · `real-journal-32x32-200step ead5a8ff…` 不変。
+全門 rc=0: `fieldrun/gate.sh` · `teeth_kill.sh` · `fieldlang-asm/gate.sh` · `q30_wave/gate.sh` · `q30_wave_metal/gate.sh`。
 
-## Vishnu 死枝
-「decoder 不在 ∴ 三経路 ≥200step 一致 不成立」= **反証済**(上記 sha)。
-なお G1(FFT `wave_step` との bit 一致は主張不可)は有効 — 本一致は `wave_step_reference` 意味論内。
+## SURVIVED
+零。ただし §15 の自省を継げ: truncation/trailing/bad-len の三歯は rc=0 まで抜けず
+**別検査(rc=12)が捕える** = 多重防御 ∴ 「唯一の防壁」ではなく「誤分類が起きる」証明に留まる。
 
-## 次(A8)
-§3d 残余変異を `teeth_kill.sh` 式に**単独適用**し KILLED 一括表を出す。
-既に個別実証済 = rotation-2swap · sat-dropped · flro-steps-zero · ties-to-even · c_lap 十進 · 他(§9-§14)。
-A8 の要 = **一表に集約 + 未実証変異(truncation・trailing byte・bad tag/len・w*h 32bit 乗算・backend 強制失敗)**。
+## 死枝
+- `rc=7`(w*h u64 溢れ)= 到達不能(w,h は u32)。代替 = `wh-32bit-multiply`。
+- `mul` 検査単独除去の歯 = 観測不能 ∴ 立てず。
+- big-endian FLRO cell 歯 = host LE のみ ∴ 実測不能。
 
 ## UNVERIFIED
-- A8 · A9(上流 D1/G2 修正)未着手
-- FLRO cell endian = host LE(big-endian 未検)· `--metal` は arm64 macOS 実機のみ
+- **A9 未着手**: 上流 D1(`../CONTRACT.md` に `寫 n==w*h` 明記 + `emit.s` が range err で拒否 +
+  `world.rs:78` の assert を回復可能誤りへ)+ G2 の十進注釈訂正。
+- `_filebuf = 4 MiB` 固定(入力 file 上限)= 未引数化・未検(§16 に明記)。
+- G1 存続: product 執行路 = FFT `wave_step` ∴ **product parity は非証明**。本一致は
+  `wave_step_reference` 意味論内部のみ。
+- `--metal` は arm64 macOS 実機 GPU のみ。
