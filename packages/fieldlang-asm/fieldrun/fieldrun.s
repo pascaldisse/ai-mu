@@ -1,6 +1,8 @@
 // fieldrun — FLDJ v1 実行体(scalar backend)。手ARM64、整数のみ。
 // 契約: fieldrun/CONTRACT.md §2b §2c §2d §3c · §4 A4。
-// 用: fieldrun <in.fldj> <out.flro> [max_cells=16384]
+// 用: fieldrun <in.fldj> <out.flro> [max_cells=16384] [max_bytes=4194304]
+//     max_bytes = 入力 .fldj の上限(既定 + 引数、静的 buffer 零 = 硬碼禁)。
+//     超える入力 = rc=16(loud)、引数で上げれば受理。
 // 記号: _coef_from_header(A3) · _q20_from_bits(A2) · _fl_q30_wave_scalar(q30_wave)
 // rc: 0 成功 · 2 header短 · 3 magic · 4 version · 5 w==0 · 6 h==0 · 7 w*h溢
 //     8 w*h>上限 · 9 n_slots<2 · 10 n_slots>上限 · 12 未知tag · 13 slot>=2
@@ -32,6 +34,9 @@
 //   88..107 hdr5(5*u32 LE)
 //   112    write 先 ptr
 //   120    k
+//   136    arena bytes(Larena 引数)
+//   144    max_bytes(入力上限・引数 or 既定)
+//   152    file buffer ptr(mmap、静的 _filebuf の代替)
 //   128    backend 函数ポインタ(既定=_fl_q30_wave_scalar · --neon で _fl_q30_wave_neon
 //          · --metal <metallib> で _fr_metal_call thunk)
 _main:
@@ -112,22 +117,39 @@ Lbk_done:
     cbz x1, Lusage
     cbz x0, Lusage
     str x0, [sp, #48]
+    // 5th arg: max_bytes(入力上限)
+    movz x9, #0x40, lsl #16        // 既定 4 MiB
+    str x9, [sp, #144]
+    cmp w28, #5
+    b.lt Largs_done
+    ldr x0, [x27, #32]
+    bl Lparse_dec
+    cbz x1, Lusage
+    cbz x0, Lusage
+    str x0, [sp, #144]
+    b Largs_done_have
 Largs_done:
+    movz x9, #0x40, lsl #16        // 既定 4 MiB(max_cells 引数無し経路)
+    str x9, [sp, #144]
+Largs_done_have:
     // 出力 path を退避(x27 は後で scratch へ転用される)
     ldr x9, [x27, #16]
     adrp x10, _argv_out@PAGE
     add x10, x10, _argv_out@PAGEOFF
     str x9, [x10]
-    // ---- 入力読込 ----
+    // ---- 入力読込(buffer = max_bytes を mmap、静的固定零) ----
+    ldr x9, [sp, #144]
+    str x9, [sp, #136]             // Larena 引数 = max_bytes
+    bl Larena
+    str x0, [sp, #152]             // file buffer ptr
     ldr x0, [x27, #8]
     mov x1, #0
     bl _open
     cmp w0, #0
     b.lt Lopenfail
     mov x19, x0
-    adrp x1, _filebuf@PAGE
-    add x1, x1, _filebuf@PAGEOFF
-    movz x2, #0x40, lsl #16
+    ldr x1, [sp, #152]
+    ldr x2, [sp, #144]
     mov x0, x19
     bl _read
     mov x21, x0
@@ -135,12 +157,11 @@ Largs_done:
     bl _close
     cmp x21, #0
     b.lt Lopenfail
-    movz x2, #0x40, lsl #16
+    ldr x2, [sp, #144]
     cmp x21, x2
-    b.ge Lopenfail
+    b.ge Lopenfail                 // 入力が max_bytes 以上 = loud rc=16
 
-    adrp x19, _filebuf@PAGE
-    add x19, x19, _filebuf@PAGEOFF
+    ldr x19, [sp, #152]
     add x20, x19, x21              // end
     cmp x21, #48
     b.lt Lrej_short
@@ -521,7 +542,11 @@ Lpd_bad:
 
 .section __DATA,__bss
 .p2align 4
-_filebuf:  .space 4194304
+// 構造固定・引数化対象外(契約 §17): 下記は全て **wire 構造か診断行** の固定長であり、
+// 入力規模に依らぬ: _flro=FLRO header 32B(契約固定)・_outline=1 診断行上限 256B・
+// _numbuf=u64 十進展開 32B(最大 20 桁)・_outlen/_argv_out=各 8B スカラ退避。
+// ∴ 「引数で上げ得る上限」ではない ∴ 引数化せず。入力依存の領(file buffer / arena)=
+// 全て mmap + 引数へ移行済(A8b: arena · A9: file buffer)。
 _flro:     .space 32
 _outline:  .space 256
 _numbuf:   .space 32
