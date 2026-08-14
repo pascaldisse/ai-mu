@@ -9,3 +9,6 @@ target/
 tcc-probe.png
 lexer.o
 test_lexer
+packages/fieldlang-asm/q30_wave/*.o
+packages/fieldlang-asm/q30_wave/wave_runner
+packages/fieldlang-asm/q30_wave/wave-otool.txt

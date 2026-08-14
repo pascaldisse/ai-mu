@@ -9,3 +9,6 @@ fieldc
 q30/*.o
 q30/q30_selftest
 q30/q30_bench
+
+# q30_wave 凍結vectorsは門の錨。追跡必須。
+!q30_wave/wave_vectors.bin
