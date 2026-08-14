@@ -1,0 +1,193 @@
+built: fldj_parse
+built: q20_conv
+built: coef
+built: fieldrun
+green   good                   rc=0 fldj ok w=2 h=2 n=4 slots=2 ops=2 steps=1 writes=1
+green   good8x8                rc=0 fldj ok w=8 h=8 n=64 slots=2 ops=2 steps=200 writes=1
+KILLED  magic                  rc=3 fldj reject code=3
+KILLED  version                rc=4 fldj reject code=4
+KILLED  w-zero                 rc=5 fldj reject code=5
+KILLED  h-zero                 rc=6 fldj reject code=6
+KILLED  wh-32bit-wrap          rc=8 fldj reject code=8
+KILLED  wh-over-arena          rc=8 fldj reject code=8
+KILLED  nslots-lt2             rc=9 fldj reject code=9
+KILLED  nslots-over            rc=10 fldj reject code=10
+KILLED  dt-noncanonical        rc=11 fldj reject code=11
+KILLED  damping-0.999-decimal  rc=11 fldj reject code=11
+KILLED  c-noncanonical         rc=11 fldj reject code=11
+KILLED  dx-noncanonical        rc=11 fldj reject code=11
+KILLED  range-noncanonical     rc=11 fldj reject code=11
+KILLED  unknown-tag            rc=12 fldj reject code=12
+KILLED  seedatom-tag1          rc=12 fldj reject code=12
+KILLED  writeraw-slot2         rc=13 fldj reject code=13
+KILLED  trailing-partial-op    rc=14 fldj reject code=14
+KILLED  writeraw-len-ne-wh     rc=15 fldj reject code=15
+KILLED  writeraw-len-gt-wh     rc=15 fldj reject code=15
+KILLED  header-truncated       rc=2 fldj reject code=2
+KILLED  op-truncated           rc=14 fldj reject code=14
+KILLED  empty                  rc=2 fldj reject code=2
+KILLED  missing-file           rc=16 fldj reject code=16
+green   max-cells-arg          rc=0 fldj ok w=200 h=200 n=40000 slots=2 ops=2 steps=1 writes=1
+gate: fldj_parse A1 OK
+--- q20_conv 実走: 契約 §3a ベクタ ---
+00000000 want=0            got=rc=0 0                     ok      +0
+80000000 want=0            got=rc=0 0                     ok      -0 -> +0
+3F800000 want=1048576      got=rc=0 1048576               ok      1.0
+BF800000 want=-1048576     got=rc=0 -1048576              ok      -1.0
+3F000000 want=524288       got=rc=0 524288                ok      0.5
+3DCCCCCD want=104858       got=rc=0 104858                ok      0.1 f32 ties-away
+BDCCCCCD want=-104858      got=rc=0 -104858               ok      -0.1
+34000000 want=0            got=rc=0 0                     ok      ERRATUM 2^-23 q=0.125 (§3a は 2^-21 と誤記し 1 を期待)
+B4000000 want=0            got=rc=0 0                     ok      ERRATUM 対称
+33FFFFFF want=0            got=rc=0 0                     ok      2^-23 直下
+34000001 want=0            got=rc=0 0                     ok      2^-23 直上
+447FFFFF want=1073741760   got=rc=0 1073741760            ok      1023.99994
+C5000000 want=-2147483648  got=rc=0 -2147483648           ok      -2048.0 = i32 min
+45000000 want=REJECT:21    got=rc=21 q20: reject range    ok      +2048.0 mag==2^31 正 = 表現不可
+7F800000 want=REJECT:20    got=rc=20 q20: reject non-finite ok      +Inf
+7FC00000 want=REJECT:20    got=rc=20 q20: reject non-finite ok      NaN
+00000001 want=0            got=rc=0 0                     ok      最小 subnormal
+35000000 want=1            got=rc=0 1                     ok      TIE 2^-21 q=0.5 丁度 -> away -> 1
+B5000000 want=-1           got=rc=0 -1                    ok      TIE 負側
+34FFFFFF want=0            got=rc=0 0                     ok      TIE 直下 q<0.5
+35000001 want=1            got=rc=0 1                     ok      TIE 直上 q>0.5
+FF800000 want=REJECT:20    got=rc=20 q20: reject non-finite ok      -Inf
+C5000001 want=REJECT:21    got=rc=21 q20: reject range    ok      -2048.0 未満 |mag|>2^31
+green   vectors: all match
+--- 赤歯 ---
+KILLED  ties-to-even         不一致行:
+          35000000 want=1            got=rc=0 0                     MISMATCH TIE 2^-21 q=0.5 丁度 -> away -> 1
+          B5000000 want=-1           got=rc=0 0                     MISMATCH TIE 負側
+KILLED  truncate             不一致行:
+          3DCCCCCD want=104858       got=rc=0 104857                MISMATCH 0.1 f32 ties-away
+          BDCCCCCD want=-104858      got=rc=0 -104857               MISMATCH -0.1
+          35000000 want=1            got=rc=0 0                     MISMATCH TIE 2^-21 q=0.5 丁度 -> away -> 1
+          B5000000 want=-1           got=rc=0 0                     MISMATCH TIE 負側
+          35000001 want=1            got=rc=0 0                     MISMATCH TIE 直上 q>0.5
+KILLED  clamp-no-reject      不一致行:
+          C5000001 want=REJECT:21    got=rc=0 -2147483904           MISMATCH -2048.0 未満 |mag|>2^31
+KILLED  plus-2p31-allowed    不一致行:
+          45000000 want=REJECT:21    got=rc=0 2147483648            MISMATCH +2048.0 mag==2^31 正 = 表現不可
+KILLED  reject-boundary-tight 不一致行:
+          C5000000 want=-2147483648  got=rc=21 q20: reject range    MISMATCH -2048.0 = i32 min
+gate: q20_conv A2 OK
+--- coef 実走: §2b/§3b ベクタ ---
+3F800000…  want=c_cur=2040216832 c_lap=10737419 c_prev=-966475008 got=rc=0 c_cur=2040216832 c_lap=10737419 c_prev=-966475008 ok       canonical(§2b)
+3F800000…  want=REJECT:22          got=rc=22 coef: reject non-canonical header        ok       dt=0.25 非canonical(§3b)
+3F800000…  want=REJECT:22          got=rc=22 coef: reject non-canonical header        ok       damping 十進0.999 の罠(G2)
+00000000…  want=REJECT:22          got=rc=22 coef: reject non-canonical header        ok       c=0
+3F800000…  want=REJECT:22          got=rc=22 coef: reject non-canonical header        ok       dx=0
+3F800000…  want=REJECT:22          got=rc=22 coef: reject non-canonical header        ok       range=0
+3F800000…  want=REJECT:22          got=rc=22 coef: reject non-canonical header        ok       dt 1ulp 下
+3F800000…  want=REJECT:22          got=rc=22 coef: reject non-canonical header        ok       damping 1ulp 上
+green   vectors: all match
+--- 赤歯 ---
+KILLED  c_cur-misread-damping    不一致行:
+          3F800000…  want=c_cur=2040216832 c_lap=10737419 c_prev=-966475008 got=rc=0 c_cur=2040220160 c_lap=10737419 c_prev=-966475008 MISMATCH canonical(§2b)
+KILLED  c_prev-misread-damping   不一致行:
+          3F800000…  want=c_cur=2040216832 c_lap=10737419 c_prev=-966475008 got=rc=0 c_cur=2040216832 c_lap=10737419 c_prev=-966478272 MISMATCH canonical(§2b)
+KILLED  c_lap-truncate           不一致行:
+          3F800000…  want=c_cur=2040216832 c_lap=10737419 c_prev=-966475008 got=rc=0 c_cur=2040216832 c_lap=10737418 c_prev=-966475008 MISMATCH canonical(§2b)
+KILLED  c_prev-sign              不一致行:
+          3F800000…  want=c_cur=2040216832 c_lap=10737419 c_prev=-966475008 got=rc=0 c_cur=2040216832 c_lap=10737419 c_prev=966475008 MISMATCH canonical(§2b)
+KILLED  dt-check-removed         不一致行:
+          3F800000…  want=REJECT:22          got=rc=0 c_cur=2040216832 c_lap=10737419 c_prev=-966475008 MISMATCH dt=0.25 非canonical(§3b)
+          3F800000…  want=REJECT:22          got=rc=0 c_cur=2040216832 c_lap=10737419 c_prev=-966475008 MISMATCH dt 1ulp 下
+KILLED  damping-check-removed    不一致行:
+          3F800000…  want=REJECT:22          got=rc=0 c_cur=2040216832 c_lap=10737419 c_prev=-966475008 MISMATCH damping 十進0.999 の罠(G2)
+          3F800000…  want=REJECT:22          got=rc=0 c_cur=2040216832 c_lap=10737419 c_prev=-966475008 MISMATCH damping 1ulp 上
+KILLED  range-check-removed      不一致行:
+          3F800000…  want=REJECT:22          got=rc=0 c_cur=2040216832 c_lap=10737419 c_prev=-966475008 MISMATCH range=0
+KILLED  invariant-removed        不一致行:
+          3F800000…  want=c_cur=2040216832 c_lap=10737419 c_prev=-966475008 got=rc=0 c_cur=2040216832 c_lap=536925963 c_prev=-966475008 MISMATCH canonical(§2b)
+KILLED  lap-over-2p29(invariant) rc=23 coef: invariant |c_lap|>2^29
+gate: coef A3 OK
+green   3c-2x2-one-tick        cells=[1950456 20972 20972 0] steps=1 sat=0
+green   4x4-3tick              sha=33074917e723d60a4434ddf1badb9844faa734beb17204f0b8bdb712c16c3f7f
+green   saturating-vector      sat=4
+KILLED  payload-nan            rc=20 fieldrun reject code=20
+KILLED  payload-inf            rc=20 fieldrun reject code=20
+KILLED  payload-over-2048      rc=21 fieldrun reject code=21
+KILLED  magic                  rc=3 fieldrun reject code=3
+KILLED  version                rc=4 fieldrun reject code=4
+KILLED  dt-noncanonical        rc=22 fieldrun reject code=22
+KILLED  damping-decimal        rc=22 fieldrun reject code=22
+KILLED  writeraw-slot2         rc=13 fieldrun reject code=13
+KILLED  writeraw-len-ne        rc=15 fieldrun reject code=15
+KILLED  nslots-lt2             rc=9 fieldrun reject code=9
+KILLED  unknown-tag            rc=12 fieldrun reject code=12
+KILLED  rotation-2swap         rc=0 output differs from reference
+KILLED  sat-dropped            rc=0 output differs from reference
+KILLED  flro-steps-zero        rc=0 output differs from reference
+KILLED  flro-sat-zero          rc=0 output differs from reference
+KILLED  flro-magic-be          rc=0 output differs from reference
+KILLED  out-alias-cur          rc=0 output differs from reference
+green   arena-arg-16512        rc=0 size=66080 (max_cells=16512、旧固定 16384 超)
+KILLED  arena-arg-under        rc=8 fieldrun reject code=8
+KILLED  arena-cap-hardcoded    rc=8 output differs from reference
+green   slots-arg-4            rc=0 (n_slots=4 · 引数 4 と既定 1024 が byte 一致)
+KILLED  slots-arg-under        rc=10 fieldrun reject code=10
+green   slots-arg-2000         rc=0 (旧硬碼 1024 超)
+KILLED  slots-default-cap      rc=10 fieldrun reject code=10
+KILLED  slots-cap-hardcoded    rc=10 output differs from reference
+gate: fieldrun A4 OK
+green   3c-2x2-one-tick        sha=fa6cbcebf5db39f6f2d2cae9114d9ee60f96ad025009a6770e96d7387ede0a35 (scalar==neon, byte 一致)
+green   4x4-3tick              sha=33074917e723d60a4434ddf1badb9844faa734beb17204f0b8bdb712c16c3f7f (scalar==neon, byte 一致)
+green   saturating-vector      sha=ec09887b045dd627e746c0b7aaa3fc830e6368d41bd973c88e8287e22e38b744 (scalar==neon, byte 一致)
+green   8x8-3tick-vecpath      sha=99771ec140caede7098ddb9ff1cc36f05ee0a9cb8ea418cbd4df9bfdc7163152 (scalar==neon, byte 一致)
+green   9x9-3tick-vecedge      sha=70a04aa34c5c3f64d55a3c43215c5c896f11a13a776ccae92e60a19a9b230afb (scalar==neon, byte 一致)
+green   4x4-known-sha          33074917e723d60a4434ddf1badb9844faa734beb17204f0b8bdb712c16c3f7f
+green   default-is-scalar      壊れた neon を連結しても旗無しは scalar 出力・--neon は乖離
+KILLED  neon-symbol-gone       rc=1 Undefined symbols for architecture arm64:
+KILLED  neon-round-half        8x8-3tick-vecpath:rc=0 9x9-3tick-vecedge:rc=0  output differs from scalar reference
+KILLED  neon-tail-drop         8x8-3tick-vecpath:rc=0 9x9-3tick-vecedge:rc=0  output differs from scalar reference
+KILLED  neon-lane-cross        8x8-3tick-vecpath:rc=0 9x9-3tick-vecedge:rc=0  output differs from scalar reference
+KILLED  neon-bound-off-by-1    8x8-3tick-vecpath:rc=0 9x9-3tick-vecedge:rc=0  output differs from scalar reference
+KILLED  neon-sat-drop          8x8-3tick-vecpath:rc=0 9x9-3tick-vecedge:rc=0  output differs from scalar reference
+gate: fieldrun A5 (--neon) OK
+green   3c-2x2-one-tick        sha=fa6cbcebf5db39f6f2d2cae9114d9ee60f96ad025009a6770e96d7387ede0a35 (scalar==neon==metal, byte 一致)
+green   4x4-3tick              sha=33074917e723d60a4434ddf1badb9844faa734beb17204f0b8bdb712c16c3f7f (scalar==neon==metal, byte 一致)
+green   saturating-vector      sha=ec09887b045dd627e746c0b7aaa3fc830e6368d41bd973c88e8287e22e38b744 (scalar==neon==metal, byte 一致)
+green   8x8-3tick-vecpath      sha=99771ec140caede7098ddb9ff1cc36f05ee0a9cb8ea418cbd4df9bfdc7163152 (scalar==neon==metal, byte 一致)
+green   9x9-3tick-vecedge      sha=70a04aa34c5c3f64d55a3c43215c5c896f11a13a776ccae92e60a19a9b230afb (scalar==neon==metal, byte 一致)
+green   40x40-4tick-gpu        sha=434598ba9f5a8f3be0853ebd0d2c3d80228bdbb59561ff27662cefa8ef073933 (scalar==neon==metal, byte 一致)
+green   4x4-known-sha(metal)   33074917e723d60a4434ddf1badb9844faa734beb17204f0b8bdb712c16c3f7f
+green   gpu-evidence           metal command status: 4
+KILLED  metallib-absent        rc=24 no output file (CPU fallback 無し)
+green   default-is-scalar      旗無し= GPU 未接触・scalar 出力
+green   metal-state-reuse      複数 init でも scalar と byte 一致
+KILLED  metal-reps-0           saturating-vector:rc=25 8x8-3tick-vecpath:rc=25 40x40-4tick-gpu:rc=25  differs from scalar reference
+green   metal-offset-inv       offset=4 scalar と byte 一致(bridge 不変量)
+green   metal-offset-inv       offset=28 scalar と byte 一致(bridge 不変量)
+KILLED  metal-offset-3         saturating-vector:rc=0 8x8-3tick-vecpath:rc=0 40x40-4tick-gpu:rc=0  differs from scalar reference
+KILLED  metal-fail-silent      rc=24 no output (metallib 欠落下)
+KILLED  metal-init-silent      rc=25 no output (metallib 欠落下)
+KILLED  metal-both-silent      rc=0 output≠scalar (metallib 欠落下)
+KILLED  metal-flro-magic-be    saturating-vector:rc=0 8x8-3tick-vecpath:rc=0 40x40-4tick-gpu:rc=0  differs from scalar reference
+./metal_gate.sh: line 177: 31684 Abort trap: 6           "$work/fr_nowait" --metal "$MLIB" "$work/t6.fldj" "$work/nowait.flro" > "$work/nowait.log" 2>&1
+KILLED  metal-no-wait          rc=134 *** Terminating app due to uncaught exception 'NSInvalidArgumentException', reason: '-[AGXG13XFamilyCommandBuffer waitUntilCompletedX]: unrecognized selector sent to instance 0x13c808120'
+gate: fieldrun A6 (--metal) OK
+green   generator-independence     gen_fld_a7.sh の非註釈行に実装参照 零
+green   fieldc-compile             fld=11306B fldj=4158B
+raw     sha(a7.fld)                b83c386ac4d1bc5a7a0be1dc65954754ab0d152f04d5098c2bc7e1e13a8a51b1
+raw     sha(a7.fldj)               11e973d2722dfeb8a38b1774266380f2339f9be7a6a932797113d4daadc86925
+raw     fldj-header(48B)            46 4c 44 4a 01 00 00 00 20 00 00 00 20 00 00 00 00 00 80 3f cd cc cc 3d 77 be 7f 3f 00 00 80 3f 00 00 00 00 00 00 00 00 00 00 80 3f 02 00 00 00 
+raw     fld-src-head               界 32 32 2 0
+raw     fld-src-step               歩 200
+green   real-journal-32x32-200step sha=63f868bc673bbd4f7a9cf943f2b48f7f46fd416d0e55d145fa9e3cb97c1a24c9 (scalar==neon==metal, byte 一致)
+green   gpu-evidence               metal command status: 4
+raw     flro-header                46 4c 52 4f 00 00 00 00 20 00 00 00 20 00 00 00 c8 00 00 00 00 00 00 00 af 00 00 00 00 00 00 00 
+green   steps>=200                 steps=200 sat=175 (FLRO off16/off24)
+green   nonzero-evolution          sha0=7ec0c4c809a0d3d7c3335444197f0b00f383fa4351349d8ea5059c1a8aa29d13
+green   nonzero-evolution          sha200=63f868bc673bbd4f7a9cf943f2b48f7f46fd416d0e55d145fa9e3cb97c1a24c9 diff_bytes=4083/4128
+raw     flro0-header               46 4c 52 4f 00 00 00 00 20 00 00 00 20 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+raw     cells0-first8              2048 4294591538 62639496 4294961970 908908 78316456 4294954185 1084027 
+raw     cells200-first8            175971292 173372662 170863118 168493115 166280307 164393384 162807619 161554878 
+KILLED  tooth:step-count-199       sha=732362411d3c63c36aec1b997a4cfe3d096d7f2045ce710f5d0818139385d82a != sha200
+KILLED  tooth:init-field-phase1    sha=7d676d4b653a0f92a1f922875d95cb637fcb63b1b466afc869b168ed207d844d != sha200
+KILLED  tooth:journal-1byte        off=100 64->65 sha=318487027818ac6713ca244b8cce948906b8034e6b80b21f22a3c1fb3d383dad != sha200
+KILLED  tooth:max-cells-arg        rc=8 (max_cells=512 < 1024 胞)
+green   max-cells=1024-exact       sha=63f868bc673bbd4f7a9cf943f2b48f7f46fd416d0e55d145fa9e3cb97c1a24c9 (同一)
+KILLED  tooth:max-bytes-arg        rc=16 (max_bytes=64 < 4158 B)
+green   max-bytes-arg-exact        sha=63f868bc673bbd4f7a9cf943f2b48f7f46fd416d0e55d145fa9e3cb97c1a24c9 (max_bytes=4159 で同一)
+gate: fieldrun A7 (real fieldc journal, 32x32, 200 step, 三経路) OK

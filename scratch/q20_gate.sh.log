@@ -1,0 +1,42 @@
+--- q20_conv 実走: 契約 §3a ベクタ ---
+00000000 want=0            got=rc=0 0                     ok      +0
+80000000 want=0            got=rc=0 0                     ok      -0 -> +0
+3F800000 want=1048576      got=rc=0 1048576               ok      1.0
+BF800000 want=-1048576     got=rc=0 -1048576              ok      -1.0
+3F000000 want=524288       got=rc=0 524288                ok      0.5
+3DCCCCCD want=104858       got=rc=0 104858                ok      0.1 f32 ties-away
+BDCCCCCD want=-104858      got=rc=0 -104858               ok      -0.1
+34000000 want=0            got=rc=0 0                     ok      ERRATUM 2^-23 q=0.125 (§3a は 2^-21 と誤記し 1 を期待)
+B4000000 want=0            got=rc=0 0                     ok      ERRATUM 対称
+33FFFFFF want=0            got=rc=0 0                     ok      2^-23 直下
+34000001 want=0            got=rc=0 0                     ok      2^-23 直上
+447FFFFF want=1073741760   got=rc=0 1073741760            ok      1023.99994
+C5000000 want=-2147483648  got=rc=0 -2147483648           ok      -2048.0 = i32 min
+45000000 want=REJECT:21    got=rc=21 q20: reject range    ok      +2048.0 mag==2^31 正 = 表現不可
+7F800000 want=REJECT:20    got=rc=20 q20: reject non-finite ok      +Inf
+7FC00000 want=REJECT:20    got=rc=20 q20: reject non-finite ok      NaN
+00000001 want=0            got=rc=0 0                     ok      最小 subnormal
+35000000 want=1            got=rc=0 1                     ok      TIE 2^-21 q=0.5 丁度 -> away -> 1
+B5000000 want=-1           got=rc=0 -1                    ok      TIE 負側
+34FFFFFF want=0            got=rc=0 0                     ok      TIE 直下 q<0.5
+35000001 want=1            got=rc=0 1                     ok      TIE 直上 q>0.5
+FF800000 want=REJECT:20    got=rc=20 q20: reject non-finite ok      -Inf
+C5000001 want=REJECT:21    got=rc=21 q20: reject range    ok      -2048.0 未満 |mag|>2^31
+green   vectors: all match
+--- 赤歯 ---
+KILLED  ties-to-even         不一致行:
+          35000000 want=1            got=rc=0 0                     MISMATCH TIE 2^-21 q=0.5 丁度 -> away -> 1
+          B5000000 want=-1           got=rc=0 0                     MISMATCH TIE 負側
+KILLED  truncate             不一致行:
+          3DCCCCCD want=104858       got=rc=0 104857                MISMATCH 0.1 f32 ties-away
+          BDCCCCCD want=-104858      got=rc=0 -104857               MISMATCH -0.1
+          35000000 want=1            got=rc=0 0                     MISMATCH TIE 2^-21 q=0.5 丁度 -> away -> 1
+          B5000000 want=-1           got=rc=0 0                     MISMATCH TIE 負側
+          35000001 want=1            got=rc=0 0                     MISMATCH TIE 直上 q>0.5
+KILLED  clamp-no-reject      不一致行:
+          C5000001 want=REJECT:21    got=rc=0 -2147483904           MISMATCH -2048.0 未満 |mag|>2^31
+KILLED  plus-2p31-allowed    不一致行:
+          45000000 want=REJECT:21    got=rc=0 2147483648            MISMATCH +2048.0 mag==2^31 正 = 表現不可
+KILLED  reject-boundary-tight 不一致行:
+          C5000000 want=-2147483648  got=rc=21 q20: reject range    MISMATCH -2048.0 = i32 min
+gate: q20_conv A2 OK
