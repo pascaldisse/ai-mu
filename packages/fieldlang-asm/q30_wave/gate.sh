@@ -1,13 +1,19 @@
 #!/bin/sh
 set -eu
 cd "$(dirname "$0")"
-D=1973cf60a0cf4b20e2117d64af66ed99a79a3751646d8f3f51837e33648e2397
+D=b826a11494d9e988ad90cc2db93aceceb77229ae741e028a2a785339751b493e
 echo "$D  wave_vectors.bin" | shasum -a 256 -c -
 # Forbidden source-name and token scan; the scanner is deliberately outside its subject set.
 if find . -maxdepth 1 -type f \( -name '*.rs' -o -name '*.c' -o -name '*.swift' -o -name '*.py' \) | grep -q .; then exit 1; fi
 if grep -nEi 'rust|cargo|rustc|[.]rs|clang|swift|python|[.]c' ./*.s CONTRACT.md; then exit 1; fi
 ./build.sh
 ./wave_runner all wave_vectors.bin
+# corruption tooth: magic byte changed; assembly parser must reject even if invoked directly.
+cp wave_vectors.bin wave_vectors.bin.corrupt
+printf "X" | dd of=wave_vectors.bin.corrupt bs=1 seek=0 conv=notrunc >/dev/null 2>&1
+if ./wave_runner all wave_vectors.bin.corrupt >/dev/null 2>&1; then rm -f wave_vectors.bin.corrupt; exit 1; fi
+rm -f wave_vectors.bin.corrupt
+printf "%s\n" "mutation fixture-magic rejected=ok"
 ./wave_abi_probe
 otool -tvV wave_runner > wave-otool.txt
 for m in smull.2d saddl.2d saddl2.2d sshll.2d sshll2.2d sqxtn.2s sqxtn2.4s sshr.2d shl.2d xtn.2s cmgt.2d addp.2d dup.2d ld1.4s st1.4s; do grep -qF "$m" wave-otool.txt || exit 1; done
@@ -37,4 +43,4 @@ mut out-guard-tooth wave_neon.s 'if(!$d&&s/_fl_q30_wave_neon:\n/_fl_q30_wave_neo
 # cur のみが破れる。出力比較では検出不能、custody 比較のみが捕らえる。
 mut input-custody-tooth wave_neon.s 'if(!$d&&s/^Ldone:\n/Ldone:\n    ldr x9, [sp, #0]\n    str wzr, [x9]\n/){$d=1}'
 mut input-custody-scalar-tooth wave_scalar.s 'if(!$d&&s/^Ldone:\n/Ldone:\n    ldr x9, [sp, #0]\n    str wzr, [x9]\n/){$d=1}'
-printf '%s\n' 'q30_wave gate: frozen133 scalar+neon aligned+unaligned alias ABI custody guard mutations=ok'
+printf '%s\n' 'q30_wave gate: frozen138-Q30WAVE2 scalar+neon aligned+unaligned alias ABI custody guard mutations=ok'

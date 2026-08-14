@@ -1,4 +1,4 @@
-// Q30WAVE1 hand ARM64 gate runner. libSystem: open/read/close/write/exit only.
+// Q30WAVE2 hand ARM64 gate runner. libSystem: open/read/close/write/exit only.
 // Bounded static arenas; validates every frozen case through scalar + NEON.
 // x18/x19..x28 untouched; stack is 16-byte aligned at every external call.
 .subsections_via_symbols
@@ -34,12 +34,12 @@ _main:
     bl _close
     adrp x9, _filebuf@PAGE
     add x9, x9, _filebuf@PAGEOFF
-    // magic Q30WAVE1\0
+    // magic Q30WAVE2\0
     ldr x10, [x9]
     movz x11, #0x3351
     movk x11, #0x5730, lsl #16
     movk x11, #0x5641, lsl #32
-    movk x11, #0x3145, lsl #48
+    movk x11, #0x3245, lsl #48
     cmp x10, x11
     b.ne Lfail
     ldrb w10, [x9, #8]
@@ -66,11 +66,11 @@ Lcase:
     add x14, x14, _cfg@PAGEOFF
     str w11, [x14]
     str w12, [x14, #4]
-    ldrsw x15, [x9], #4
+    ldr x15, [x9], #8
     str x15, [x14, #8]
-    ldrsw x15, [x9], #4
+    ldr x15, [x9], #8
     str x15, [x14, #16]
-    ldrsw x15, [x9], #4
+    ldr x15, [x9], #8
     str x15, [x14, #24]
     uxtw x15, w13
     lsl x15, x15, #2
@@ -426,12 +426,12 @@ Lcust_chk:
     ret
 Lok:
     ldr x10, [sp, #24]
-    cmp x10, #133
+    cmp x10, #138
     b.ne Lfail
     adrp x1, Lokmsg@PAGE
     add x1, x1, Lokmsg@PAGEOFF
     mov x0, #1
-    mov x2, #21
+    mov x2, #29
     bl _write
     mov x0, #0
     b Lexit
@@ -457,5 +457,5 @@ _custcur:  .space 65536
 _custprev: .space 65536
 _cfg:     .space 32
 .section __TEXT,__cstring,cstring_literals
-Lokmsg: .asciz "wave_runner: 133 ok\n"
+Lokmsg: .asciz "wave_runner: 138 Q30WAVE2 ok\n"
 Lbadmsg: .asciz "wave_runner: failure\n"

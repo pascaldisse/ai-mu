@@ -1,4 +1,4 @@
-# Q30 二次元五点波
+# Q30 二次元五点波 · Q30WAVE2 fixture
 
 ABI:
 
@@ -39,3 +39,6 @@ live callee-saved sentinel(x19-x28/LR/SP, 8x8 で NEON vector 経路を含む)�
 `alias-tooth`(`cur==prev` 時のみ prev 狂わす)
 `out-guard-tooth`(one-past-end 書込 — 出力本体は正しく guard のみ検出)
 `input-custody-tooth` / `input-custody-scalar-tooth`(`Ldone` 到達後に `cur` 破壊 — 出力・飽和数は正しく custody のみ検出)。
+
+
+凍結wire=`Q30WAVE2\0`: record係数=LE i64 `c_cur,c_lap,c_prev`。V1のLE i32係数wireは本runner対象外（ABI i64を表せぬ）。V2 corpus=旧133+境界5; `c_cur=±2^31`・`c_lap=±2^29`・lap極値・項順序を含む。
