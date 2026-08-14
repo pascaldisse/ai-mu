@@ -61,9 +61,14 @@ git merge-tree --write-tree field/lang-asm        db8c13f35450ee26647bd0081bab03
 頭が動けば tree hash も動く ∴ **この節は書いた瞬間に古くなる**。故に記載は常に「どの段 SHA を tip としたか」を伴わねば無意味。取込者は**必ず自分の手元の現頭で再実行**し、記載値は「その段での値」としてのみ読め。
 
 ### 訂正commit後の再実測
-tip = `PLACEHOLDER_NEWHEAD`
+tip = `1c62d4d1a086a089f43f400e4862619f98a109e4`
 ```
-PLACEHOLDER_OUT
+git merge-tree --write-tree field/lang-asm 1c62d4d1a086a089f43f400e4862619f98a109e4
+  -> 02fb42a405c337f32d6c00212b8d327e90d9f8b2   rc=0
+git merge-tree --write-tree origin/field/lang-asm 1c62d4d1a086a089f43f400e4862619f98a109e4
+  -> 02fb42a405c337f32d6c00212b8d327e90d9f8b2   rc=0
+git merge-tree --write-tree f78aaa82f1772b6cfd8006c92391b3a33b8c81c2 1c62d4d1a086a089f43f400e4862619f98a109e4
+  -> 02fb42a405c337f32d6c00212b8d327e90d9f8b2   rc=0
 ```
 (此の値もまた、次の commit で古くなる。上の構造注記の通り。)
 
