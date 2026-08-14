@@ -38,9 +38,14 @@ f32 最近傍 of 0.999 = `0x3F7FC077`(512 ulp 差)、上流注釈 `(0.999)` は�
 再現する(誤十進 → c_cur=2040220160・c_prev=-966478272 一致)∴ 原因同定は確定。
 帰結: 三経路(scalar/NEON/Metal)は互いに byte 一致するが、**上流 `wave_step_reference` とは
 原理上一致し得ぬ** ∴ G1(product parity 非証明)は単なる未証ではなく **既知の不一致**。
-本 atom では **直さぬ**: 係数修正 = A7 golden `ead5a8ff…` / 4x4 `a85a4cc0…` を必ず壊すが、
-A9 の歯は「回帰零」を要求する ∴ **archon 判断待ちの blocker** として契約に残す。
-選: 或{係数を真値へ直し golden 再凍結 | 現係数を「別意味論」として契約に明記し parity を放棄}。
+**【A9-4 Ashwin/Rudra: 閉じた】** L2 判断 = 「係数を真値へ直し golden 再凍結」を採る。
+実施: `c_cur 2040220160→2040216832` · `c_prev -966478272→-966475008`(`c_lap` 不変)。
+三者独立導出一致(Ashwin bit分解 · Rudra · L2 実 f32 `dd bits=0x3dcc985f`)。
+骸(誤定数時代の golden、想定内に壊れた): `4x4-3tick a85a4cc0ee31…` · `A7 32x32x200 ead5a8fff10e…` ·
+`3c-2x2 c34a1425…` · `8x8 39343e40…` · `9x9 169ff90f…` · §3c cells `1950460 …`。
+新凍結値 = §10/§12/§13 の表を見よ。`saturating-vector ec09887b…` は不変(飽和支配ゆえ係数非依存)= 独立な裏付け。
+なお **G1 は存続**: 係数が真値になっても product 執行路 `plane.rs:79-90` は FFT 分光 ∴ bit 一致は
+原理上主張し得ぬ。射程 = `wave_step_reference`(5点 stencil)の意味論まで。
 本 lane 実測 hexdump(oracle.fldj off 0x18)= `77be 7f3f` = 0x3F7FBE77 ✓。
 
 **G3 (Q20/Q30 の scale 関係が未記載)** cell = Q20、係数 = Q30。q30 律
@@ -187,7 +192,8 @@ op stream: 未知 tag・vec 長が残長超過・末端不一致(trailing byte)=
 | `0x00000001` | 最小 subnormal | `0` | S 極小 |
 
 ### 3b. 係数(§2b)
-canonical header → `c_cur=2040220160` `c_lap=10737419` `c_prev=-966478272`。
+canonical header → `c_cur=2040216832` `c_lap=10737419` `c_prev=-966475008`。
+骸(A9-4): 旧 `c_cur=2040220160`・`c_prev=-966478272` = **誤定数時代の値**(因 = damping frac 誤讀 §5)。
 非 canonical header(例 dt を `0x3E000000`=0.25 に変えた FLDJ)→ **REJECT**(係数を算出せぬ)。
 
 ### 3c. 一 tick の完全手検査(2x2、周期 wrap)
@@ -195,15 +201,15 @@ canonical header → `c_cur=2040220160` `c_lap=10737419` `c_prev=-966478272`。
 `w==2` ゆえ x-1 と x+1 は同一胞へ wrap(`../q30_wave/CONTRACT.md` の周期律、`w==1`/`h==1` は自身へ wrap)。
 ```
 i=0: lap = cur[1]+cur[1]+cur[2]+cur[2] - 4*cur[0] = 0+0+0+0 - 4194304 = -4194304
-     q(c_cur,cur0)  = (2040220160*1048576 + 2^29) >> 30 = 1992403
+     q(c_cur,cur0)  = (2040216832*1048576 + 2^29) >> 30 = 1992399
      q(c_lap,lap)   = (10737419*(-4194304) + 2^29) >> 30 = -41943   (§5d)
      q(c_prev,0)    = (0 + 2^29) >> 30 = 0
-     acc = 1992403 - 41943 + 0 = 1950460
+     acc = 1992399 - 41943 + 0 = 1950456      (骸: 誤定数時代 1950460)
 i=1: lap = cur[0]+cur[0]+cur[3]+cur[3] - 4*cur[1] = 2097152
      q(c_lap,lap) = 20972 ; 他 0 ∴ acc = 20972
 i=2: 同 i=1 -> 20972
 i=3: lap = cur[2]+cur[2]+cur[1]+cur[1] - 0 = 0 -> acc = 0
-out = [1950460, 20972, 20972, 0], sat = 0
+out = [1950456, 20972, 20972, 0], sat = 0    (骸: 誤定数時代 1950460 …)
 ```
 (`>>` = 算術右シフト。負値の丸めは shift 定義に従う = `../q30_wave` 律と同一。)
 之は scalar/NEON/Metal 三経路とも同値でなければならぬ。
@@ -239,47 +245,56 @@ f32 decode: `0x3F7FBE77` → e=0x7E=126, f=0x7FBE77=**8371831**, sig=2^23+f=**16
 下の bc 行の damping 系の数値は全てこの誤値に乗っている ∴ 判読注意(G12)。
 `0x3DCCCCCD` → e=0x7B=123, f=0x4CCCCD=5033165, sig=13421773, 値=`13421773/2^27`。
 ```
-$ bc <<< 'scale=20; 16759927/2^24'      -> .99896949529647827148   (damping 実値)
+$ bc <<< 'scale=20; 16760439/2^24'      -> .99900001287460327148   (damping 実値 = f32最近傍 of 0.999)
 $ bc <<< 'scale=20; 13421773/2^27'      -> .10000000149011611938   (dt 実値)
 ```
-`dd = fl32(damping*dt)`: 厳密積 = `16759927*13421773/2^51`。dd≈0.09990 ∈ [2^-4,2^-3)
-∴ f32 は `m/2^27`, m∈[2^23,2^24)。`m = round_even(16759927*13421773 / 2^24)`:
+骸(A9-4): 旧 sig `16759927`(→ .99896949529647827148)= **誤讀**。0x7FBE77 = 8371831、
+8371319 に非ず(512 の讀み落ち)。Vishnu §5 と Surya の「独立検算」は **同一の誤入力を共有**
+∴ 一致は無意味だった(失敗様式共有)。真 sig = `8371831 + 2^23 = 16760439`。
+
+`dd = fl32(damping*dt)`: 厳密積 = `16760439*13421773/2^51`。dd≈0.09990 ∈ [2^-4,2^-3)
+∴ f32 は `m/2^27`, m∈[2^23,2^24)。`m = round_even(16760439*13421773 / 2^24)`:
 ```
-$ bc: n=16759927*13421773            -> 224947935690571
-      n/2^24 = 13407941  rem 13418315 ;  half = 8388608  ->  rem > half ∴ 切上
-      m_dd = 13407942                  (dd = 13407942/2^27)
+$ bc: n=16760439*13421773            -> 224954807638347   (48 bit)
+      n/2^24 = 13408351  rem 6707531 ;  half = 8388608  ->  rem < half ∴ 切捨
+      m_dd = 13408351                  (dd = 13408351/2^27 = .09989999979734420776)
 ```
 `2-dd ∈ [1,2)` ∴ `m2/2^23`。`(2-dd)*2^23 = 2^24 - m_dd/16`:
 ```
-$ bc: a = 2^28 - m_dd = 255027514 ; a/16 = 15939219 rem 10 ; half=8 -> 切上
-      m2 = 15939220 ;  c_cur = m2 * 2^7 = 2040220160        (厳密、丸め無し)
+$ bc: a = 2^28 - m_dd = 255027105 ; a/16 = 15939194 rem 1 ; half=8 -> 切捨
+      m2 = 15939194 ;  c_cur = m2 * 2^7 = 2040216832        (厳密、丸め無し)
 ```
 `1-dd ∈ [0.5,1)` ∴ `m3/2^24`。`(1-dd)*2^24 = 2^24 - m_dd/8`:
 ```
-$ bc: b = 2^27 - m_dd = 120809786 ; b/8 = 15101223 rem 2 ; half=4 -> 切捨
-      m3 = 15101223 ;  c_prev = -(m3 * 2^6) = -966478272    (厳密)
+$ bc: b = 2^27 - m_dd = 120809377 ; b/8 = 15101172 rem 1 ; half=4 -> 切捨
+      m3 = 15101172 ;  c_prev = -(m3 * 2^6) = -966475008    (厳密)
 ```
 `k = fl32(dt^2)`(c=dx=1.0 ゆえ courant=dt 厳密)。`k≈0.01 ∈ [2^-7,2^-6)` ∴ `m4/2^30`:
 ```
 $ bc: s = 13421773^2 = 180143990463529 ; s/2^24 = 10737418 rem 9395241 ; half=8388608 -> 切上
       m4 = 10737419 ;  c_lap = m4 = 10737419                (厳密)
 ```
-**独立検算(十進の別経路、上の整数経路と失敗様式を共有せぬ)**:
-`c_cur/2^30 = 1.9001030...` vs `2-dd = 2-0.0998969 = 1.9001031` ✓ ·
-`c_lap/2^30 = 0.0100000003` vs `k = 0.01` ✓ · `c_prev/2^30 = -0.9001030` vs `dd-1` ✓。
+**独立検算(十進の別経路 = awk 倍精度、上の整数経路と失敗様式を共有せぬ・A9-4 実走)**:
+```
+dd            = .09989999979734420776
+fl32(2-dd)*2^30 = 2040216832.0000   (厳密積 (2-dd)*2^30 = 2040216840 → f32 丸めで 2040216832)
+fl32(dd-1)*2^30 = -966475008.0000   (厳密 -966475016 → f32 丸め)
+k_exact*2^30    = 10737418.560000   → round = 10737419 = c_lap
+```
+∴ 三定数とも整数経路と一致(Rudra 独立導出・L2 第三経路 f32 実演算 `dd bits=0x3dcc985f` とも三者一致)。
 ~~G2 の 512 ulp：`0.999 - 0.99896949529 = 3.0505e-5` / ulp 比 511.8~~ 【A9 死】
 因 = 入力定数が誤(frac 誤讀)。両経路が同じ誤値を共有していた ∴ 「別経路一致」は役に立たず
 (= 失敗様式共有の実例。検は算と同じ穴を持ってはならぬ)。
 真値経路: `0x3F7FBE77` は 0.999 の f32 最近傍そのもの ∴ ulp 差 = **0**。
 §3c の量子化(bc 実走、本 lane 実測):
 ```
-$ bc: cc=2040220160; cl=10737419; v=1048576
-      (cc*v+2^29)/2^30                  -> 1992403
+$ bc: cc=2040216832; cl=10737419; v=1048576
+      (cc*v+2^29)/2^30                  -> 1992399
       cl*(-4194304)+2^29 = -45035462590464 ; floor(/2^30) -> -41943   (算術shift=floor)
       (cl*2097152+2^29)/2^30            -> 20972
 ```
-**独立検算(除算の別経路)**: `c_cur*2^20/2^30 = c_cur/2^10 = 2040220160/1024 = 1992402.5`
-丁度 ∴ 半加算後 floor = `1992403` ✓ · `c_lap*2^22/2^30 = 10737419/256 = 41943.043` →
+**独立検算(除算の別経路)**: `c_cur*2^20/2^30 = c_cur/2^10 = 2040216832/1024 = 1992399.25`
+∴ 半加算後 floor = `1992399` ✓ · `c_lap*2^22/2^30 = 10737419/256 = 41943.043` →
 `floor(-41943.043+0.5) = -41943` ✓ · `10737419/512 = 20971.52` → `floor(20972.02) = 20972` ✓。
 **之は算術の実測であり、実装の実走ではない** — 実装側の一致は A4 の門が最初の実測点。
 
@@ -335,19 +350,21 @@ UNVERIFIED: A3 以降(係数・三buffer回転・FLRO・三経路 SHA)は未着�
 
 `coef.s`(手ARM64・整数のみ、FP レジスタ/FP 命令 零 = `coef_gate.sh` が二重走査で強制)+
 `coef_gate.sh`(shell のみ)。用: `coef <c> <dt> <damping> <dx> <range>`(各 hex bits)
-→ stdout `c_cur=2040220160 c_lap=10737419 c_prev=-966478272`。
+→ stdout `c_cur=2040216832 c_lap=10737419 c_prev=-966475008`。
 rc: 0 成功 · 22 非 canonical(loud reject)· 23 不変式 `|c_lap|>2^29` · 17 用法/hex 不正。
 公開記号 `_coef_from_header(x0=5*u32 LE, x1=3*i64 出力域) -> x0=rc`(A4 が呼ぶ)。
 検査 = 5値の **byte 一致**のみ。実行時 f32 算 零・係数は即値。
 
 **独立検算(bc 実走、§5 と別入力・同律の再導出)**:
 ```
-16759927*13421773 = 224947935690571 ; /2^24 = 13407941 rem 13418315 > 8388608 ∴ 切上 → m_dd=13407942
-2^28-13407942 = 255027514 ; /16 = 15939219 rem 10 > 8 ∴ 切上 → 15939220*2^7 = 2040220160  = c_cur ✓
-2^27-13407942 = 120809786 ; /8  = 15101223 rem  2 < 4 ∴ 切捨 → 15101223*2^6 =  966478272  = -c_prev ✓
+16760439*13421773 = 224954807638347 ; /2^24 = 13408351 rem 6707531 < 8388608 ∴ 切捨 → m_dd=13408351
+2^28-13408351 = 255027105 ; /16 = 15939194 rem 1 < 8 ∴ 切捨 → 15939194*2^7 = 2040216832  = c_cur ✓
+2^27-13408351 = 120809377 ; /8  = 15101172 rem 1 < 4 ∴ 切捨 → 15101172*2^6 =  966475008  = -c_prev ✓
 13421773^2 = 180143990463529 ; /2^24 = 10737418 rem 9395241 > 8388608 ∴ 切上 → 10737419 = c_lap ✓
 ```
-∴ Vishnu §5 と **一致**(三定数とも)。丸め分岐は全て rem 対 half の比較で確定、境界 tie 無し。
+丸め分岐は全て rem 対 half の比較で確定、境界 tie 無し。
+骸(A9-4): 旧「Surya 独立検算 ∴ Vishnu §5 と一致」= **無効**。両者とも入力 sig を `16759927` と
+誤讀していた ∴ 同一の穴を通った。検は算と失敗様式を共有してはならぬ、の実例として残す。
 不変式: `10737419 <= 2^29 = 536870912` ✓(実装で実測検査、歯 `lap-over-2p29` が rc=23 を実証)。
 
 **§3a erratum の独立検証(Agni 主張の再確認)**: `0x34000000` の e フィールド =
@@ -415,11 +432,11 @@ scalar との FLRO byte 一致で採点される(下記門)。
 
 **門 `neon_gate.sh`(shell のみ)実測**: scalar と `--neon` の FLRO **byte/SHA-256 一致**:
 ```
-3c-2x2-one-tick   c34a1425e8f9abebc91115b85de11468b3e55cced8c254e4b5cf3b6ca4b0ac69
-4x4-3tick         a85a4cc0ee310770209e5a67834ed7693b159c6130eae7f5afe709b093050a3c   (契約既知値と一致)
+3c-2x2-one-tick   fa6cbcebf5db39f6f2d2cae9114d9ee60f96ad025009a6770e96d7387ede0a35
+4x4-3tick         33074917e723d60a4434ddf1badb9844faa734beb17204f0b8bdb712c16c3f7f   (A9-4 再凍結値・旧 a85a4cc0… は誤定数時代の骸)
 saturating-vector ec09887b045dd627e746c0b7aaa3fc830e6368d41bd973c88e8287e22e38b744
-8x8-3tick-vecpath 39343e40a9fad4641c3c95ac6430d39c9b89934908f4a6beb39c5c03801f7e92
-9x9-3tick-vecedge 169ff90f75a5a07446526d544afce91a747e1a54634996f6b00d010e3e4bbe6d
+8x8-3tick-vecpath 99771ec140caede7098ddb9ff1cc36f05ee0a9cb8ea418cbd4df9bfdc7163152
+9x9-3tick-vecedge 70a04aa34c5c3f64d55a3c43215c5c896f11a13a776ccae92e60a19a9b230afb
 ```
 2x2/4x4 は w<6 ∴ neon の**端胞 scalar 経路のみ**を踏む。4 胞 vector 経路を実際に踏ませる為に
 非一様場(胞毎相異)の 8x8(vector 内部)と 9x9(vector 境界 `x+4==w` が露出する幅)を追加。
@@ -445,11 +462,11 @@ UNVERIFIED: A6(`--metal`)· A7(実 journal ≥200 step の三経路 SHA 一致)�
 
 **門 `metal_gate.sh`(shell のみ・実機 GPU 実走)**: 三経路 FLRO **byte/SHA-256 一致**:
 ```
-3c-2x2-one-tick   c34a1425e8f9abebc91115b85de11468b3e55cced8c254e4b5cf3b6ca4b0ac69
-4x4-3tick         a85a4cc0ee310770209e5a67834ed7693b159c6130eae7f5afe709b093050a3c  (契約既知値と一致)
+3c-2x2-one-tick   fa6cbcebf5db39f6f2d2cae9114d9ee60f96ad025009a6770e96d7387ede0a35
+4x4-3tick         33074917e723d60a4434ddf1badb9844faa734beb17204f0b8bdb712c16c3f7f  (A9-4 再凍結値・旧 a85a4cc0… は誤定数時代の骸)
 saturating-vector ec09887b045dd627e746c0b7aaa3fc830e6368d41bd973c88e8287e22e38b744
-8x8-3tick-vecpath 39343e40a9fad4641c3c95ac6430d39c9b89934908f4a6beb39c5c03801f7e92
-9x9-3tick-vecedge 169ff90f75a5a07446526d544afce91a747e1a54634996f6b00d010e3e4bbe6d
+8x8-3tick-vecpath 99771ec140caede7098ddb9ff1cc36f05ee0a9cb8ea418cbd4df9bfdc7163152
+9x9-3tick-vecedge 70a04aa34c5c3f64d55a3c43215c5c896f11a13a776ccae92e60a19a9b230afb
 40x40-4tick-gpu   6590b38f06421e17e1ed05d3e5ffb44896b4eae155df695ac80763e4873bae6a  (A6 追加=1600胞 非一様、GPU thread 多数)
 ```
 GPU 実走証跡 = bridge の fd1 出力 `metal command status: 4` を門が実測 grep。
@@ -497,19 +514,19 @@ green   fieldc-compile             fld=11306B fldj=4158B
 raw     sha(a7.fld)                b83c386ac4d1bc5a7a0be1dc65954754ab0d152f04d5098c2bc7e1e13a8a51b1
 raw     sha(a7.fldj)               11e973d2722dfeb8a38b1774266380f2339f9be7a6a932797113d4daadc86925
 raw     fldj-header(48B)            46 4c 44 4a 01 00 00 00 20 00 00 00 20 00 00 00 00 00 80 3f cd cc cc 3d 77 be 7f 3f 00 00 80 3f 00 00 00 00 00 00 00 00 00 00 80 3f 02 00 00 00
-green   real-journal-32x32-200step sha=ead5a8fff10ea68936fd56bd2861de869328840c8e9a27dfcb18da919c9d3370 (scalar==neon==metal, byte 一致)
+green   real-journal-32x32-200step sha=63f868bc673bbd4f7a9cf943f2b48f7f46fd416d0e55d145fa9e3cb97c1a24c9 (scalar==neon==metal, byte 一致)
 green   gpu-evidence               metal command status: 4
 raw     flro-header                46 4c 52 4f 00 00 00 00 20 00 00 00 20 00 00 00 c8 00 00 00 00 00 00 00 af 00 00 00 00 00 00 00
 green   steps>=200                 steps=200 sat=175 (FLRO off16/off24)
 green   nonzero-evolution          sha0=7ec0c4c809a0d3d7c3335444197f0b00f383fa4351349d8ea5059c1a8aa29d13
-green   nonzero-evolution          sha200=ead5a8ff… diff_bytes=4083/4128
+green   nonzero-evolution          sha200=63f868bc… diff_bytes=4083/4128
 raw     cells0-first8              2048 4294591538 62639496 4294961970 908908 78316456 4294954185 1084027
 raw     cells200-first8            175994898 173395924 170886056 168515726 166302587 164415367 162829334 161576353
 KILLED  tooth:step-count-199       sha=4f9e6eed… != sha200
 KILLED  tooth:init-field-phase1    sha=8d029911… != sha200
 KILLED  tooth:journal-1byte        off=100 64->65 sha=446ea00a… != sha200
 KILLED  tooth:max-cells-arg        rc=8 (max_cells=512 < 1024 胞)
-green   max-cells=1024-exact       sha=ead5a8ff… (同一)
+green   max-cells=1024-exact       sha=63f868bc… (同一)
 gate: fieldrun A7 (real fieldc journal, 32x32, 200 step, 三経路) OK
 ```
 `max_cells` は門引数(既定 4096・`MAXCELLS` 可変)∴ 硬碼零。1024 丁度で同一 SHA・512 で rc=8。
@@ -522,7 +539,7 @@ gate: fieldrun A7 (real fieldc journal, 32x32, 200 step, 三経路) OK
 
 **Vishnu 死枝の反証**: round12 序盤 Vishnu は「FLDJ decoder 不在 ∴ 三経路 ≥200step 一致は不成立」と
 REJECT した。本 atom で **decoder は実在し(A1..A4)**、実 `fieldc` 出力 journal 一本から
-scalar/neon/metal が 200 step 後に **FLRO byte 一致**(sha `ead5a8ff…`、実機 GPU 実走)。
+scalar/neon/metal が 200 step 後に **FLRO byte 一致**(sha `63f868bc…`、実機 GPU 実走)。
 ∴ 当該死枝は **反証済**。ただし反証されたのは「decoder 不在」の前提であり、
 Vishnu が同時に指摘した G1(FFT `wave_step` との bit 一致は主張不可)は**依然有効**
 — 本一致は `wave_step_reference` 意味論の内部整合であり、上流 product 経路との parity ではない。
@@ -594,8 +611,9 @@ green   arena-arg-16512        rc=0 size=66080 (max_cells=16512、旧固定 1638
 KILLED  arena-arg-under        rc=8 fieldrun reject code=8            (引数 16511 < 16512 胞)
 KILLED  arena-cap-hardcoded    rc=8 output differs from reference     (`ldr x9,[sp,#48]`→`mov x9,#16384` = 硬碼再導入)
 ```
-回帰零(SHA 不変、本 lane 実測): `4x4-3tick a85a4cc0ee310770209e5a67834ed7693b159c6130eae7f5afe709b093050a3c` ·
-`real-journal-32x32-200step ead5a8fff10ea68936fd56bd2861de869328840c8e9a27dfcb18da919c9d3370`。
+回帰零(SHA 不変、A8b 時点の実測): `4x4-3tick a85a4cc0ee31…` · `real-journal-32x32-200step ead5a8fff10e…`。
+【A9-4 以降の骸】上記二値 = **誤定数時代の値**。真係数への訂正で意図的に壊し、
+新値 `33074917e723…` / `63f868bc673b…` へ再凍結済(G12 参照)。
 全門 rc=0: `fieldrun/gate.sh` · `teeth_kill.sh`(KILLED=79 green=37 SURVIVED=0)· `../gate.sh` ·
 `../q30_wave/gate.sh` · `../q30_wave_metal/gate.sh`。
 

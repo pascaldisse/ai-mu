@@ -1,0 +1,7 @@
+A8	truncation-check-removed	WriteRaw payload 残長検査 cmp x15,x12 -> x15,xzr(常真)	rc!=14	rc=12	KILLED
+A8	trailing-byte-check-removed	Step op 残長検査 cmp x15,#5 -> #0(末尾余剰 1B を素通し)	rc!=14	rc=12	KILLED
+A8	bad-tag-check-removed	未知 tag -> Lrej_tag を Ldone へ(黙って正常終了)	rc!=12	rc=0	KILLED
+A8	bad-len-check-removed	WriteRaw len==w*h 検査(b.ne Lrej_wlen)除去	rc!=15	rc=12	KILLED
+A8	wh-32bit-multiply	n = w*h を 64bit -> 32bit 乗算へ弱化(65536^2 が 0 へ wrap)	rc!=8	rc=19	KILLED
+A8	backend-forced-failure	metallib 不在で _fl_wave_metal_init 失敗を強制(変異零・入力側)	rc=24 かつ出力零	rc=24 出力零	green
+A8	metal-init-check-removed	init 失敗検査除去 -> 黙って CPU へ落ちる経路が無い事の実証	rc!=24	rc=25	KILLED
