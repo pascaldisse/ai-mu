@@ -42,3 +42,16 @@ live callee-saved sentinel(x19-x28/LR/SP, 8x8 で NEON vector 経路を含む)�
 
 
 凍結wire=`Q30WAVE2\0`: record係数=LE i64 `c_cur,c_lap,c_prev`。V1のLE i32係数wireは本runner対象外（ABI i64を表せぬ）。V2 corpus=旧133+境界5; `c_cur=±2^31`・`c_lap=±2^29`・lap極値・項順序を含む。
+
+## 段1 (Vishnu atom7-final): 残長・checked dims
+
+`wave_runner` は今、file end を保持し `Lneed` にて **各 record 前・各 field 前** に残長を厳密要求する。
+`width*height` は `umulh`+`mul` の **u64 checked**、`0`/負/arena上限超=拒否。全record後の cursor は
+file end と **完全一致** せねばならぬ(trailing garbage=赤)。
+
+kill証明(實機 M1 Pro、base 8a1d244 の runner と本runnerの差):
+```
+--- base runner vs trailing:   wave_runner: 138 Q30WAVE2 ok   base_rc=0   ← SURVIVE(Kali blocker 1)
+--- new  runner vs trailing:   wave_runner: failure           new_rc=1    ← RED
+```
+門teeth: fixture-trailing / fixture-truncated / fixture-dims-overflow / fixture-zero-dim / fixture-record-truncated。

@@ -14,6 +14,32 @@ printf "X" | dd of=wave_vectors.bin.corrupt bs=1 seek=0 conv=notrunc >/dev/null 
 if ./wave_runner all wave_vectors.bin.corrupt >/dev/null 2>&1; then rm -f wave_vectors.bin.corrupt; exit 1; fi
 rm -f wave_vectors.bin.corrupt
 printf "%s\n" "mutation fixture-magic rejected=ok"
+# 残長 teeth (Kali blocker 1/2): trailing garbage・truncation・dims overflow は必ず赤。
+cp wave_vectors.bin wave_vectors.bin.trail
+printf 'ZZZZ' >> wave_vectors.bin.trail
+if ./wave_runner all wave_vectors.bin.trail >/dev/null 2>&1; then rm -f wave_vectors.bin.trail; exit 1; fi
+rm -f wave_vectors.bin.trail
+printf "%s\n" "mutation fixture-trailing rejected=ok"
+SZ=$(wc -c < wave_vectors.bin)
+dd if=wave_vectors.bin of=wave_vectors.bin.trunc bs=1 count=$((SZ-17)) >/dev/null 2>&1
+if ./wave_runner all wave_vectors.bin.trunc >/dev/null 2>&1; then rm -f wave_vectors.bin.trunc; exit 1; fi
+rm -f wave_vectors.bin.trunc
+printf "%s\n" "mutation fixture-truncated rejected=ok"
+# w=h=65536: 32bit mul は 0 へ wrap した。u64 checked 故いま拒否。
+{ printf 'Q30WAVE2\000'; printf '\002\000ab'; printf '\000\000\001\000\000\000\001\000'; } > wave_vectors.bin.dims
+if ./wave_runner all wave_vectors.bin.dims >/dev/null 2>&1; then rm -f wave_vectors.bin.dims; exit 1; fi
+rm -f wave_vectors.bin.dims
+printf "%s\n" "mutation fixture-dims-overflow rejected=ok"
+# w=0 / h=0 拒否。
+{ printf 'Q30WAVE2\000'; printf '\002\000ab'; printf '\000\000\000\000\001\000\000\000'; } > wave_vectors.bin.zero
+if ./wave_runner all wave_vectors.bin.zero >/dev/null 2>&1; then rm -f wave_vectors.bin.zero; exit 1; fi
+rm -f wave_vectors.bin.zero
+printf "%s\n" "mutation fixture-zero-dim rejected=ok"
+# record 途中切断(record 内 remaining-length)。
+{ printf 'Q30WAVE2\000'; printf '\002\000ab'; printf '\002\000\000\000\002\000\000\000'; } > wave_vectors.bin.short
+if ./wave_runner all wave_vectors.bin.short >/dev/null 2>&1; then rm -f wave_vectors.bin.short; exit 1; fi
+rm -f wave_vectors.bin.short
+printf "%s\n" "mutation fixture-record-truncated rejected=ok"
 ./wave_abi_probe
 otool -tvV wave_runner > wave-otool.txt
 for m in smull.2d saddl.2d saddl2.2d sshll.2d sshll2.2d sqxtn.2s sqxtn2.4s sshr.2d shl.2d xtn.2s cmgt.2d addp.2d dup.2d ld1.4s st1.4s; do grep -qF "$m" wave-otool.txt || exit 1; done

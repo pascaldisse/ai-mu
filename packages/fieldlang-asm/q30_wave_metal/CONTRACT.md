@@ -18,7 +18,7 @@ Rust/C/Swift/Python source は product closure に禁。
 `Params` = `uint width, height; uint c_cur_lo; int c_cur_hi; uint c_lap_lo; int c_lap_hi;
 uint c_prev_lo; int c_prev_hi;` — 係数 i64 は lo/hi 対で渡す(shader は native 64-bit 整数を用いぬ)。
 
-Dispatch: `dispatchThreads(width*height,1,1)` tpg `(64,1,1)`。kernel 自身も `gid >= count` を守る。
+Dispatch: `dispatchThreads(count,1,1)` tpg `(64,1,1)`。`count` = **host 側 u64 checked** `width*height`(u32 上限超=拒否)を Params へ渡す。kernel 自身も `gid >= count` を守り、`width*height` の product 一致を検す。
 Encoder offset 非零 可(4B 倍数、Metal 規約)。門は byte offset `0/4/28` を全走。
 
 ## Lane law（受理済 scalar/NEON と同一）
@@ -33,7 +33,8 @@ Encoder offset 非零 可(4B 倍数、Metal 規約)。門は byte offset `0/4/28
 
 ## 要求門（bridge/runner atom で実装）
 
-- 凍結 `../q30_wave/wave_vectors.bin` digest 厳密 → 133 vectors を audit runner が**独立 decode**
+- 凍結 `../q30_wave/wave_vectors.bin` digest 厳密 → **138** vectors(Q30WAVE2 wire, i64係数 `c_cur=±2^31`・`c_lap=±2^29`・lap極値を含む)を audit runner が**独立 decode**
+- decode は各record + 全file の remaining-length を厳密検証(truncated/trailing/malformed=赤)、`width*height` は **u64 checked**(zero/negative/arena上限=拒否)
 - 各 vector: fixture の want/sat(=受理済 scalar/NEON 産) と Int64 参照が一致することを先に検し、
   然る後 GPU 出力を byte/sat 厳密比較 → scalar=NEON=Metal
 - encoder offset `0/4/28` bytes・`cur==prev` alias 呼出・out 前後 0xA5 guard・入力 custody 全byte比較

@@ -57,13 +57,13 @@ _main:
     str x10, [sp, #24]             // cases
 Lcase:
     ldr x9, [sp, #16]
-    mov x17, #2
+    mov x11, #2
     bl Lneed
     ldrh w10, [x9], #2
     cbz w10, Lok
     // name + w,h(8) を残長内で要求。
-    uxtw x17, w10
-    add x17, x17, #8
+    uxtw x11, w10
+    add x11, x11, #8
     bl Lneed
     add x9, x9, x10                 // skip name
     ldr w11, [x9], #4               // w
@@ -82,9 +82,9 @@ Lcase:
     cmp x13, #0x4000                // arena: 16384 i32 max
     b.hi Lfail
     // 係数24B + cur/prev/expect 3*4n + sat 8B を残長内で要求。
-    lsl x17, x13, #2
-    add x17, x17, x17, lsl #1
-    add x17, x17, #32
+    lsl x11, x13, #2
+    add x11, x11, x11, lsl #1
+    add x11, x11, #32
     bl Lneed
     adrp x14, _cfg@PAGE
     add x14, x14, _cfg@PAGEOFF
@@ -361,10 +361,10 @@ Lcase:
     add x10, x10, #1
     str x10, [sp, #24]
     b Lcase
-// x9=cursor, x17=必要残byte数 -> 越境なら Lfail。x16/x17 のみ壊す。
+// x9=cursor, x11=必要残byte数 -> 越境なら Lfail。x16/x17 のみ壊す。
 Lneed:
     ldr x16, [sp, #80]
-    add x17, x9, x17
+    add x17, x9, x11
     cmp x17, x16
     b.hi Lfail
     ret
