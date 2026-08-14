@@ -278,3 +278,16 @@ $ bc: cc=2040220160; cl=10737419; v=1048576
 - §3d の変異が実際に赤に落ちるか — **未実測**
 - §5 の係数三定数は手算(bc)で **算出済・実測照合未了**(実装との突合は A3 の門が最初)
 - G2 の上流十進注釈誤りは **本書では未修正**(A9 で上流 `../CONTRACT.md` を直す)
+
+## 8. A1 実装記(Brahma)
+
+`fldj_parse.s`(手ARM64)+ `build.sh` + `gen_fldj.sh`(shell のみ生成器)+ `gate.sh`。
+用: `fldj_parse <path.fldj> [max_cells=16384] [max_slots=1024]`(硬碼禁 = 既定 + 引数)。
+rc 表(検査毎に別経路): 2 header短 · 3 magic · 4 version · 5 w==0 · 6 h==0 · 7 w*h u64溢
+· 8 w*h>上限 · 9 n_slots<2 · 10 n_slots>上限 · 11 物理5値 非canonical · 12 未知tag
+· 13 WriteRaw slot>=2 · 14 op切断/末尾余剰 · 15 WriteRaw len != w*h · 16 open/read · 17 用法。
+seed = 無視(SeedAtom 不受理 ∴ 拒否経路無し)。
+rc=7 は防御的: u32×u32 < 2^64 故 現 wire では到達不能(**UNVERIFIED**、歯無し)。
+32bit 乗算 wrap の歯は `65536x65536 -> rc=8` で立てた(u64 なら 2^32 > 上限)。
+D1 の穴(`n != w*h`)は消費側で rc=15 として閉じた(生産側修正は A9 のまま)。
+op 実行・Q20 変換・係数導出は本 atom の外(A2/A3/A4)。
