@@ -61,6 +61,22 @@ tri() { # tri <name> <fldj> ; stdout に sha
 sha200=$(tri "real-journal-${W}x${H}-${STEPN}step" "$work/a7.fldj")
 base="real-journal-${W}x${H}-${STEPN}step"
 
+# ---- 3b. sat = 門の一級市民(§17c・Chandi)----
+# 各 vector は飽和級(SAT/NONSAT)を**事前宣言**し、実測 sat と食い違えば赤(両方向)。
+# sat>0 の走は三経路 byte 一致のみ主張し、f32 意味論一致は主張せぬ。
+rd32() { od -An -v -tu4 -j"$1" -N4 "$2" | tr -d ' '; }
+sat_class() { # sat_class <name> <flro> <expect SAT|NONSAT>
+  s=$(rd32 24 "$2")
+  case "$3" in
+    NONSAT) [ "$s" -eq 0 ] || { echo "gate: $1 expected NONSAT but sat=$s (退行)" >&2; exit 1; }
+      printf 'green   %-26s sat=%s NONSAT ∴ f32 意味論 parity 主張可(§17b: RMSREL(200)=1.101e-4)\n' "$1" "$s" ;;
+    SAT) [ "$s" -gt 0 ] || { echo "gate: $1 declared SAT but sat=$s (宣言と実測が不一致)" >&2; exit 1; }
+      printf 'SAT     %-26s sat=%s ∴ **f32 意味論一致を主張せぬ**(三経路 byte 一致のみ・§17b(1))\n' "$1" "$s" ;;
+    *) echo 'gate: bad sat class' >&2; exit 1 ;;
+  esac
+}
+sat_class "$base" "$work/$base.s.flro" SAT
+
 # GPU 実走の証跡
 grep -q 'metal command status: 4' "$work/$base.m.log" \
   || { echo 'gate: no GPU completion evidence' >&2; cat "$work/$base.m.log" >&2; exit 1; }
@@ -69,7 +85,6 @@ printf 'green   %-26s %s\n' 'gpu-evidence' "$(grep -m1 'status' "$work/$base.m.l
 # ---- 4. ≥200 step · nonzero evolution ----
 hdr=$(od -An -tx1 -N32 "$work/$base.s.flro" | tr -s ' \n' ' ')
 printf 'raw     %-26s%s\n' 'flro-header' "$hdr"
-rd32() { od -An -tu4 -j"$1" -N4 "$2" | tr -d ' '; }
 steps=$(rd32 16 "$work/$base.s.flro"); sathi=$(rd32 24 "$work/$base.s.flro")
 [ "$steps" -ge 200 ] || { echo "gate: steps=$steps < 200" >&2; exit 1; }
 printf 'green   %-26s steps=%s sat=%s (FLRO off16/off24)\n' 'steps>=200' "$steps" "$sathi"
@@ -150,4 +165,21 @@ s=$(shasum -a 256 "$work/mb_ok.flro" | cut -d' ' -f1)
 [ "$s" = "$sha200" ] || { echo 'gate: max_bytes 引数で output drift' >&2; exit 1; }
 printf 'green   %-26s sha=%s (max_bytes=%s で同一)\n' 'max-bytes-arg-exact' "$s" "$((sz + 1))"
 
-printf 'gate: fieldrun A7 (real fieldc journal, %sx%s, %s step, 三経路) OK\n' "$W" "$H" "$steps"
+# ---- 7. 非飽和 vector(§17c・Chandi): EBASE/ESPAN で Q20 域内振幅 → sat=0 ----
+# 之が **f32 意味論一致を主張し得る唯一の A7 走**。飽和したら赤(将来の退行検知)。
+NS_EBASE=${NS_EBASE:-118}; NS_ESPAN=${NS_ESPAN:-6}
+EBASE=$NS_EBASE ESPAN=$NS_ESPAN STEPN=$STEPN ./gen_fld_a7.sh "$work/a7ns.fld"
+"$FIELDC" "$work/a7ns.fld" "$work/a7ns.fldj"
+printf 'raw     %-26s %s\n' 'sha(a7ns.fld)' "$(shasum -a 256 "$work/a7ns.fld" | cut -d' ' -f1)"
+nsbase="nonsat-journal-${W}x${H}-${STEPN}step"
+shans=$(tri "$nsbase" "$work/a7ns.fldj")
+grep -q 'metal command status: 4' "$work/$nsbase.m.log" \
+  || { echo 'gate: nonsat no GPU completion evidence' >&2; exit 1; }
+nssteps=$(rd32 16 "$work/$nsbase.s.flro")
+[ "$nssteps" -ge 200 ] || { echo "gate: nonsat steps=$nssteps < 200" >&2; exit 1; }
+sat_class "$nsbase" "$work/$nsbase.s.flro" NONSAT
+[ "$shans" != "$sha200" ] || { echo 'gate: nonsat == 既定 vector (振幅引数が効かず)' >&2; exit 1; }
+printf 'KILLED  %-26s sha=%s != sha200 (EBASE/ESPAN が真に効く)\n' 'tooth:nonsat-distinct' "$shans"
+printf 'raw     %-26s%s\n' 'nonsat-cells-first8' "$(od -An -v -tu4 -j32 -N32 "$work/$nsbase.s.flro" | tr -s ' \n' ' ')"
+
+printf 'gate: fieldrun A7 (real fieldc journal, %sx%s, %s step, 三経路) OK — 既定 vector=SAT(byte 一致のみ)· nonsat vector=sat=0(f32 意味論 parity 射程内)\n' "$W" "$H" "$steps"
