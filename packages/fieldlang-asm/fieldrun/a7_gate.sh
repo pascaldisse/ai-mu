@@ -18,9 +18,10 @@ printf 'green   %-26s %s\n' 'generator-independence' 'gen_fld_a7.sh の非註釈
 ./build.sh >/dev/null
 MLIB=${MLIB:-../q30_wave_metal/q30_wave.metallib}
 [ -f "$MLIB" ] || (cd ../q30_wave_metal && ./build.sh >/dev/null)
-[ -f "$MLIB" ] || { echo "gate: metallib absent: $MLIB" >&2; exit 1; }
+[ -f "$MLIB" ] || { echo "gate: SKIP-ENV metallib absent: $MLIB — 検査未実施 rc=3" >&2; exit 3; }
 FIELDC=${FIELDC:-../fieldc}
-[ -x "$FIELDC" ] || { echo "gate: fieldc absent: $FIELDC" >&2; exit 1; }
+# fieldc 不在 = 環境事由 ∴ 検査失敗(rc=1)と区別して **rc=3 SKIP-ENV**(Ganga §16 の律を本門にも波及・Jyestha二番(え))
+[ -x "$FIELDC" ] || { echo "gate: SKIP-ENV fieldc absent: $FIELDC — 検査未実施 rc=3" >&2; exit 3; }
 MAXCELLS=${MAXCELLS:-4096}      # 硬碼禁 = 既定 + 引数(既定 16384 を上書き可能な事の実証)
 
 work=$(mktemp -d ./a7-gate.XXXXXX)

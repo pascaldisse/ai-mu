@@ -98,5 +98,10 @@ echo 'gate: fldj_parse A1 OK'
 # A6: --metal(実機 GPU)
 ./metal_gate.sh
 
-# A7: 実 fieldc journal 三経路(≥200 step)
-./a7_gate.sh
+# A7: 実 fieldc journal 三経路(≥200 step)· rc=3 = SKIP-ENV(偽赤禁)∴ 透過
+rc=0; ./a7_gate.sh || rc=$?
+[ "$rc" -eq 0 ] || { [ "$rc" -eq 3 ] && { echo 'gate: A7 SKIP-ENV rc=3 (伝播)' >&2; exit 3; }; exit "$rc"; }
+
+# A10: §15c 凍結 fixture parity(replay_fldj 不在は rc=3 SKIP-ENV)
+rc=0; ./parity_gate.sh || rc=$?
+[ "$rc" -eq 0 ] || { [ "$rc" -eq 3 ] && { echo 'gate: A10 SKIP-ENV rc=3 (伝播)' >&2; exit 3; }; exit "$rc"; }

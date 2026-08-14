@@ -94,6 +94,10 @@ if ./gate.sh >"$work/gate.log" 2>&1; then GRC=0; else GRC=$?; fi
 if grep -q 'SURVIVED' "$work/gate.log"; then
   echo 'gate: SURVIVED tooth in existing gates' >&2; grep -n SURVIVED "$work/gate.log" >&2; exit 1
 fi
+# rc=3 = SKIP-ENV(fieldc/metallib/replay 不在)∴ 検査失敗にあらず、同じ rc=3 で伝播(Jyestha二番(え))
+if [ "$GRC" -eq 3 ]; then
+  echo 'gate: SKIP-ENV 伝播 rc=3 (段2 未実施)' >&2; tail -5 "$work/gate.log" >&2; exit 3
+fi
 [ "$GRC" -eq 0 ] || { echo "gate: gate.sh rc=$GRC" >&2; tail -40 "$work/gate.log" >&2; exit 1; }
 sed -n 's/^gate: /  gate: /p' "$work/gate.log"
 
