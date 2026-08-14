@@ -88,3 +88,6 @@ echo 'gate: fldj_parse A1 OK'
 
 # A3: coef
 ./coef_gate.sh
+
+# A4: fieldrun
+./fieldrun_gate.sh

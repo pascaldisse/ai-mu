@@ -33,8 +33,13 @@ u64() { v=$1; i=0; while [ $i -lt 8 ]; do u8 $(((v >> (8 * i)) & 255)); i=$((i +
   u64 "$SEED"; u32 "$RANGE"; u32 "$NSLOTS"
   # op 1: WriteRaw(tag 6)
   u8 6; u32 "$WSLOT"; u32 "$WLEN"
+  # PAYLOAD = 空白区切 u32 列(不足分は FILL で埋める)。既定 = 全て 1.0。
   k=0
-  while [ "$k" -lt "$WLEN" ]; do u32 1065353216; k=$((k + 1)); done
+  for v in ${PAYLOAD:-}; do
+    [ "$k" -lt "$WLEN" ] || break
+    u32 "$v"; k=$((k + 1))
+  done
+  while [ "$k" -lt "$WLEN" ]; do u32 "${FILL:-1065353216}"; k=$((k + 1)); done
   # op 2: Step(tag 3)
   u8 3; u32 "$STEPN"
   [ -n "$TAIL" ] && printf '%b' "$TAIL"

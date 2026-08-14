@@ -340,3 +340,40 @@ rc: 0 成功 · 22 非 canonical(loud reject)· 23 不変式 `|c_lap|>2^29` · 1
 `c_lap-truncate` · `c_prev-sign` · `dt-check-removed` · `damping-check-removed` ·
 `range-check-removed` · `invariant-removed` · `lap-over-2p29`(rc=23 実証)。
 UNVERIFIED: A4 以降(三 buffer 回転・`_fl_q30_wave_scalar` 呼出・FLRO 書出・三経路 SHA)未着手。
+
+## 11. A4 実装記(Soma)
+
+`fieldrun.s`(手ARM64・整数のみ、FP/SIMD レジスタ・FP 命令 零 = `fieldrun_gate.sh` が二重走査で強制)
++ `fieldrun_gate.sh`(shell のみ)+ `gen_fldj.sh` に `PAYLOAD`/`FILL`(payload bit 列指定)追加。
+用: `fieldrun <in.fldj> <out.flro> [max_cells=16384]`(硬碼禁 = 既定 + 引数、arena 実寸 16384 胞)。
+連結: `q20_conv.s`/`coef.s` を `sed` で `_main` 改名した lib 版 + `../q30_wave/wave_scalar.s`
+(記号衝突回避、新規 Rust/C/Swift/Python 零)。
+
+**実走実測(§3c 一致)**: 2x2・`cur=[1.0,0,0,0]`・`prev=0`・`歩 1` →
+```
+FLRO header: 46 4c 52 4f 00 00 00 00 02 00 00 00 02 00 00 00 01 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+cells      : 1950460 20972 20972 0     size=48B (32 + 4*4)
+```
+= §3c 期待値と **byte 一致**(捏造無し、初回実走で一致)。§7 の「§3c 実装未実走」は **解消**。
+
+三 buffer 回転(§2d)を x25=cur/x26=prev/x27=scratch で実装、`_fl_q30_wave_scalar` は x19-x28 を
+保存する故 Step 境界を跨いで永続。`out` は常に第三領域 ∴ alias 無し。
+sat = 全 tick 累計(`add x19,x19,x0`)、steps = tick 総数。
+飽和の実測: 全胞 `0x44FFFFFF`(2047.99..)2x2 一tick → `sat=4`。
+独立検算(bc): `(2040220160*2147483520+2^29)>>30 = 4080440077 > 2^31-1` ∴ 4 胞飽和 ✓。
+
+rc: 0 · 2/3/4/5/6/7/8/9/10(header、A1 と同表)· 12 未知tag · 13 slot>=2 · 14 op切断 ·
+15 len!=w*h · 16 open/read · 17 用法 · 18 出力書込失敗 · 20/21(payload 非有限/範囲外、A2 を
+loud 伝播)· 22/23(非canonical/不変式、A3 を loud 伝播)。
+`_open` の可変引数 mode は **stack 渡し**(arm64 macOS ABI)— レジスタ渡しは 000 権限の
+ファイルを作る(本 lane 実測の死枝)。
+
+赤歯(全 KILLED 実測): `rotation-2swap`(回転を cur⇄scratch の 2 者 swap へ弱化 → 4x4 3tick で乖離)·
+`sat-dropped` · `flro-steps-zero` · `flro-sat-zero` · `flro-magic-be`(endian 反転)· `out-alias-cur`
+(out=cur → q30 ABI 違反、出力乖離)· `payload-nan`/`payload-inf`(rc=20)· `payload-over-2048`(rc=21)·
+`magic`/`version`/`dt-noncanonical`/`damping-decimal`/`writeraw-slot2`/`writeraw-len-ne`/
+`nslots-lt2`/`unknown-tag`。
+
+UNVERIFIED: A5(`--neon`)· A6(`--metal`)· A7(実 journal ≥200 step の三経路 SHA 一致)·
+A8(§3d 残余変異の一括表)· A9(上流 D1/G2 修正)は **未着手**。
+FLRO cell の endian は host LE をそのまま書く ∴ big-endian host での歯は **未検**(現行 arm64 のみ)。
