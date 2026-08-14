@@ -1,5 +1,5 @@
 // Q30 wave hand-written ARM64 host bridge to Metal (kernel q30_wave).
-// No Rust/C/ObjC-source/Swift on this path: every Objective-C message below is
+// No foreign-language source on this path: every Objective-C message below is
 // an explicit hand-emitted objc_msgSend call. See CONTRACT.md.
 // Modeled on the accepted decay bridge (../q30_metal/metal_bridge.s).
 .text
