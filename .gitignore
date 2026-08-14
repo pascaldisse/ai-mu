@@ -13,3 +13,9 @@ packages/fieldlang-asm/q30_wave/*.o
 packages/fieldlang-asm/q30_wave/wave_runner
 packages/fieldlang-asm/q30_wave/wave_abi_probe
 packages/fieldlang-asm/q30_wave/wave-otool.txt
+# gate 実行残渣(生成物・追跡せぬ)
+packages/fieldlang-asm/fieldrun/a8-gate.*/
+packages/fieldlang-asm/fieldrun/*.log
+packages/fieldlang-asm/q30_wave_metal/*.metallib
+packages/fieldlang-asm/q30_wave_metal/*.air
+packages/fieldlang-asm/q30_wave_metal/wave_metal_runner
