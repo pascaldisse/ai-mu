@@ -22,4 +22,19 @@ mut sat-negative wave_neon.s 'if(!$d&&s/cmgt v2\.2d, v23\.2d, v31\.2d/cmgt v2.2d
 mut vec-boundary wave_neon.s 'if(!$d&&s/add x6, x4, #5/add x6, x4, #4/){$d=1}'
 mut scalar-fallback wave_scalar.s 'if(!$d&&s/_fl_q30_wave_scalar:\n/_fl_q30_wave_scalar:\n    eor x19, x19, #1\n/){$d=1}'
 mut x18-tooth wave_scalar.s 'if(!$d&&s/_fl_q30_wave_scalar:\n/_fl_q30_wave_scalar:\n    movz x18, #1\n/){$d=1}'
-printf '%s\n' 'q30_wave gate: frozen133 scalar+neon aligned+unaligned alias ABI mutations=ok'
+# 非整列teeth: cur を 16B 境界へ強制丸め。整列入力=恒等故 frozen133 は無傷、
+# +1B 経路のみ誤pointerとなる。故に本変異のredは非整列経路が実際に採点される證。
+mut unaligned-tooth wave_neon.s 'if(!$d&&s/_fl_q30_wave_neon:\n/_fl_q30_wave_neon:\n    and x1, x1, #-16\n/){$d=1}'
+# alias teeth: cur==prev の時のみ prev を狂わす。非alias呼出=恒等故
+# 本変異のredは alias 同一基址呼出が実在し採点される證。
+mut alias-tooth wave_neon.s 'if(!$d&&s/_fl_q30_wave_neon:\n/_fl_q30_wave_neon:\n    cmp x1, x2\n    b.ne Lat9\n    add x2, x2, #4\nLat9:\n/){$d=1}'
+# guard teeth: out 直後(one-past-end)へ一書き。出力本体は正しい儘故、
+# 本変異のredは out 周囲 guard のみが検出しうる。
+mut out-guard-tooth wave_neon.s 'if(!$d&&s/_fl_q30_wave_neon:\n/_fl_q30_wave_neon:\n    ldrsw x9, [x0, #0]\n    ldrsw x10, [x0, #4]\n    mul x9, x9, x10\n    lsl x9, x9, #2\n    str wzr, [x3, x9]\n/){$d=1}'
+# custody teeth: 計算後に入力 cur を破壊。出力は正しい儘故、
+# 本変異のredは入力不変性 custody 比較のみが検出しうる。
+# 注: 注入点=Ldone(全計算完了後)。故に out 内容も saturation も正しいまま、
+# cur のみが破れる。出力比較では検出不能、custody 比較のみが捕らえる。
+mut input-custody-tooth wave_neon.s 'if(!$d&&s/^Ldone:\n/Ldone:\n    ldr x9, [sp, #0]\n    str wzr, [x9]\n/){$d=1}'
+mut input-custody-scalar-tooth wave_scalar.s 'if(!$d&&s/^Ldone:\n/Ldone:\n    ldr x9, [sp, #0]\n    str wzr, [x9]\n/){$d=1}'
+printf '%s\n' 'q30_wave gate: frozen133 scalar+neon aligned+unaligned alias ABI custody guard mutations=ok'

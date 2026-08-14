@@ -105,15 +105,19 @@ Lexit:
  bl _exit
 .section __DATA,__data
 .p2align 3
-_pcfg: .long 1
- .long 1
+// 8x8: NEON内部vector経路(width>=6要)を live sentinel 検査下に入れる。
+// 1x1 では端scalar経路のみ走り vector loop の register 破壊を live 検出できぬ。
+_pcfg: .long 8
+ .long 8
  .quad 1073741824
- .quad 0
- .quad 0
-.p2align 2
-_pcur: .long 0
-_pprv: .long 0
-_pout: .long 0
+ .quad 268435456
+ .quad 536870912
+.p2align 4
+_pcur: .fill 64, 4, 305419896
+.p2align 4
+_pprv: .fill 64, 4, 187182
+.p2align 4
+_pout: .fill 64, 4, 0
 .section __TEXT,__cstring,cstring_literals
 Lok: .asciz "abi probe ok\n"
 Lbadmsg: .asciz "abi probe bad\n"
