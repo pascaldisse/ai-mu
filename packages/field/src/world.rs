@@ -21,6 +21,8 @@ use crate::{FieldConfig, Slice};
 pub enum ApplyError {
     /// WriteRaw payload length mismatch: got vs required d.
     WriteRawLen { slot: u32, got: usize, want: usize },
+    /// WriteRaw slot id >= n_slots. INPUT error — must not panic (index OOB).
+    SlotOutOfRange { slot: u32, n_slots: usize },
 }
 
 impl core::fmt::Display for ApplyError {
@@ -30,6 +32,9 @@ impl core::fmt::Display for ApplyError {
                 f,
                 "WriteRaw slot {slot}: payload is {got} bits, must be d = {want} bits"
             ),
+            ApplyError::SlotOutOfRange { slot, n_slots } => {
+                write!(f, "WriteRaw slot {slot}: out of range, n_slots = {n_slots}")
+            }
         }
     }
 }
@@ -110,7 +115,14 @@ impl World {
                         want: self.cfg.d(),
                     });
                 }
-                let row = self.store.row_mut(*slot as usize);
+                let idx = *slot as usize;
+                if idx >= self.store.n_slots {
+                    return Err(ApplyError::SlotOutOfRange {
+                        slot: *slot,
+                        n_slots: self.store.n_slots,
+                    });
+                }
+                let row = self.store.row_mut(idx);
                 for (dst, bits) in row.iter_mut().zip(data_bits) {
                     *dst = f32::from_bits(*bits);
                 }
