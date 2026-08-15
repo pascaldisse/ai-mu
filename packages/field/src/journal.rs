@@ -37,6 +37,28 @@ const VERSION: u32 = 1;
 /// Header = magic(4) + version(4) + w(4) + h(4) + params(28) + n_slots(4).
 const HEADER_LEN: usize = 48;
 
+fn validate_header_shape(cfg: FieldConfig, n_slots: usize) -> io::Result<()> {
+    if n_slots < crate::store::RESERVED_SLOTS {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("journal: n_slots {n_slots} < {}", crate::store::RESERVED_SLOTS),
+        ));
+    }
+    if cfg.width > u32::MAX as usize || cfg.height > u32::MAX as usize || n_slots > u32::MAX as usize {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "journal: header value exceeds u32 wire range",
+        ));
+    }
+    let d = cfg.width.checked_mul(cfg.height).ok_or_else(|| {
+        io::Error::new(io::ErrorKind::InvalidInput, "journal: w*h overflow")
+    })?;
+    n_slots.checked_mul(d).ok_or_else(|| {
+        io::Error::new(io::ErrorKind::InvalidInput, "journal: n_slots*d overflow")
+    })?;
+    Ok(())
+}
+
 fn header_bytes(cfg: FieldConfig, params: &WaveParams, n_slots: usize) -> Vec<u8> {
     let mut b = Vec::with_capacity(HEADER_LEN);
     b.extend_from_slice(&MAGIC.to_le_bytes());
@@ -145,6 +167,8 @@ impl Journal {
         params: &WaveParams,
         n_slots: usize,
     ) -> io::Result<Self> {
+        // wire範囲とallocation積を検査してからfileを作る。拒絶時に空fileすら残さぬ。
+        validate_header_shape(cfg, n_slots)?;
         let mut file = std::fs::File::create(path)?;
         file.write_all(&header_bytes(cfg, params, n_slots))?;
         Ok(Journal { buf: Vec::new(), path: path.to_path_buf() })
@@ -232,6 +256,12 @@ impl Journal {
                 }
                 6 => {
                     let slot = rd_u32(&mut c)?;
+                    if slot as usize >= n_slots {
+                        return Err(io::Error::new(
+                            io::ErrorKind::InvalidData,
+                            format!("journal: WriteRaw slot {slot} >= n_slots {n_slots}"),
+                        ));
+                    }
                     let len = rd_u32(&mut c)? as usize;
                     check_len(remaining - 8, len)?;
                     let mut data_bits = Vec::with_capacity(len);

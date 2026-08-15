@@ -21,6 +21,7 @@ w0zero() { printf '\006\000\000\000\000\001\000\000\000\000\000\000\000'; }
 w1one() { printf '\006\001\000\000\000\001\000\000\000\000\000\200\077'; }
 w1zero() { printf '\006\001\000\000\000\001\000\000\000\000\000\000\000'; }
 step() { printf '\003\001\000\000\000'; }
+step2() { printf '\003\002\000\000\000'; }
 make() { f=$1; shift; header >"$f"; for op in "$@"; do "$op" >>"$f"; done; }
 run() { ./fieldrun "$1" "$2"; [ "$(wc -c <"$2" | tr -d ' ')" = 36 ]; }
 sha() { shasum -a 256 "$1" | awk '{print $1}'; }
@@ -30,17 +31,18 @@ make "$work/a.fldj" w0one w1zero step
 make "$work/b.fldj" w0one w1one step
 make "$work/z.fldj" step
 make "$work/repeat.fldj" w0one w0zero step
-make "$work/rotate.fldj" w0one w1zero step w0one step
-make "$work/resetprev.fldj" w0one w1zero step w0one w1zero step
-for n in a b z repeat rotate resetprev; do run "$work/$n.fldj" "$work/$n.flro"; done
-cmp "$work/z.flro" "$work/repeat.flro"
+make "$work/rotate.fldj" w0one w1zero step2
+for n in a b z rotate; do run "$work/$n.fldj" "$work/$n.flro"; done
+if ./fieldrun "$work/repeat.fldj" "$work/repeat.flro" >"$work/repeat.log" 2>&1; then rrc=0; else rrc=$?; fi
+[ "$rrc" = 27 ] || { cat "$work/repeat.log" >&2; echo "atom9: duplicate slot rc=$rrc, want=27" >&2; exit 1; }
+[ ! -e "$work/repeat.flro" ] || { echo 'atom9: duplicate slot wrote output' >&2; exit 1; }
 if cmp -s "$work/a.flro" "$work/b.flro"; then echo 'atom9: slot1 input was ignored' >&2; exit 1; fi
-if cmp -s "$work/rotate.flro" "$work/resetprev.flro"; then echo 'atom9: post-step WriteRaw did not preserve rotated prev' >&2; exit 1; fi
-printf 'green raw-slot0-slot1-unwritten-repeated a=%s b=%s z=%s repeat=%s\n' "$(sha "$work/a.flro")" "$(sha "$work/b.flro")" "$(sha "$work/z.flro")" "$(sha "$work/repeat.flro")"
-printf 'green raw-post-step-rotation rotate=%s resetprev=%s\n' "$(sha "$work/rotate.flro")" "$(sha "$work/resetprev.flro")"
+printf 'green raw-slot0-slot1-unwritten a=%s b=%s z=%s\n' "$(sha "$work/a.flro")" "$(sha "$work/b.flro")" "$(sha "$work/z.flro")"
+printf 'KILLED raw-duplicate-slot rc=%s output=absent\n' "$rrc"
+printf 'green raw-two-step-rotation rotate=%s\n' "$(sha "$work/rotate.flro")"
 
 # Mutation 1: slot1 is misrouted to cur; raw slot1 fixture must change.
-sed 's|cbz x10, Lw_dst0|b Lw_dst0|' fieldrun.s >"$work/slot.s"
+sed 's|mov x0, x10                    // \[MUT:slot-index\]|mov x0, xzr                    // [MUT:slot-index]|' fieldrun.s >"$work/slot.s"
 as -arch arm64 -o "$work/slot.o" "$work/slot.s"
 ld -arch arm64 -o "$work/slot" -e _main -lSystem -lobjc -framework Metal -framework Foundation \
   "$work/slot.o" q20_conv_lib.o coef_lib.o wave_scalar.o wave_neon.o metal_bridge.o -syslibroot "$SDK"
@@ -49,7 +51,7 @@ if cmp -s "$work/b.flro" "$work/slot.flro"; then echo 'atom9: slot routing mutan
 printf 'KILLED raw-slot1-misroute baseline=%s mutant=%s\n' "$(sha "$work/b.flro")" "$(sha "$work/slot.flro")"
 
 # Mutation 2: remove one arm of three-pointer rotation; two ticks must change.
-sed 's|mov x26, x25                   // \[MUT:rot3\]|mov x26, x26                   // [MUT:rot3]|' fieldrun.s >"$work/rot.s"
+sed 's|str x25, \[x9, #8\]              // \[MUT:rot3\] \[MUT:slot-rotate\]|str x27, [x9, #8]              // [MUT:rot3] [MUT:slot-rotate]|' fieldrun.s >"$work/rot.s"
 as -arch arm64 -o "$work/rot.o" "$work/rot.s"
 ld -arch arm64 -o "$work/rot" -e _main -lSystem -lobjc -framework Metal -framework Foundation \
   "$work/rot.o" q20_conv_lib.o coef_lib.o wave_scalar.o wave_neon.o metal_bridge.o -syslibroot "$SDK"
@@ -67,7 +69,7 @@ if "$work/mmap" "$work/a.fldj" "$work/mmap.flro" >"$work/mmap.log" 2>&1; then rc
 [ ! -e "$work/mmap.flro" ] || { echo 'atom9: mmap failure wrote output' >&2; exit 1; }
 printf 'KILLED mmap-failure-loud rc=%s output=absent\n' "$rc"
 
-# No _munmap call: partial allocation stays process-lifetime; failure path exits.
-if nm -u fieldrun | grep -q '_munmap'; then echo 'atom9: unexpected munmap symbol' >&2; exit 1; fi
-printf 'raw partial-cleanup=process-exit-only nm-_munmap=absent\n'
+# 動的slot tableは全allocationを明示解放する。
+if ! nm -u fieldrun | grep -q '_munmap'; then echo 'atom9: missing munmap symbol' >&2; exit 1; fi
+printf 'green partial-cleanup=explicit nm-_munmap=present\n'
 echo 'gate: Apasmara atom9 raw journal/mutation OK'
