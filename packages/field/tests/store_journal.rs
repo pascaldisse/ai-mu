@@ -277,11 +277,46 @@ fn read_all_rejects_n_slots_below_reserved() {
         let mut j = Journal::create(&path, cfg, &params, 2).unwrap();
         j.append(&Op::Step { count: 1 });
         j.flush().unwrap();
-        // header off44 = n_slots(u32 LE)を破壊 = wire malformed
         let mut bytes = std::fs::read(&path).unwrap();
         bytes[44..48].copy_from_slice(&bad.to_le_bytes());
         std::fs::write(&path, &bytes).unwrap();
         let e = Journal::read_all(&path).expect_err("n_slots < 2 must be Err");
         assert_eq!(e.kind(), std::io::ErrorKind::InvalidData, "{bad}: {e}");
     }
+}
+
+// 敵対slot header/wire: allocation/replay前に拒絶し、usize→u32切捨を許さぬ。
+#[test]
+fn journal_rejects_reserved_slot_counts_and_usize_truncation() {
+    let dir = fresh_dir("slot_header_reject");
+    let (cfg, params) = sample_cfg_params();
+    for n_slots in [0usize, 1usize] {
+        let path = jpath(&dir, &format!("n_slots_{n_slots}.fldj"));
+        assert!(Journal::create(&path, cfg, &params, n_slots).is_err());
+        assert!(!path.exists());
+    }
+    if usize::BITS > 32 {
+        let path = jpath(&dir, "n_slots_u32_trunc.fldj");
+        assert!(Journal::create(&path, cfg, &params, (u32::MAX as usize) + 1).is_err());
+        assert!(!path.exists());
+    }
+    if usize::BITS > 33 {
+        let path = jpath(&dir, "slot_times_d_overflow.fldj");
+        let huge_cfg = FieldConfig::new(1usize << 32, 2);
+        assert!(Journal::create(&path, huge_cfg, &params, u32::MAX as usize).is_err());
+        assert!(!path.exists());
+    }
+}
+
+#[test]
+fn journal_rejects_writeraw_slot_equal_to_n_slots() {
+    let dir = fresh_dir("slot_oob_reject");
+    let path = jpath(&dir, "writeraw_slot_eq_n_slots.fldj");
+    let (cfg, params) = sample_cfg_params();
+    let n_slots = 3usize;
+    let mut j = Journal::create(&path, cfg, &params, n_slots).unwrap();
+    j.append(&Op::WriteRaw { slot: n_slots as u32, data_bits: vec![0; cfg.d()] });
+    j.flush().unwrap();
+    assert!(Journal::read_all(&path).is_err());
+    let _ = std::fs::remove_file(&path);
 }
