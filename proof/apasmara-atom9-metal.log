@@ -1,0 +1,38 @@
+../q30_wave/wave_vectors.bin: OK
+wv.regen: OK
+generator independence: write-only + regen digest match=ok
+built: wave_metal_runner
+wave_metal_runner: 138 Q30WAVE2 scalar=neon=metal ok (offsets 0/4/28, alias, reps, count0/neg/overflow)
+gpu evidence: status4=690 errornil=690 (138 cases x 5 dispatches)
+mutation fixture-magic rejected=ok
+mutation fixture-trailing rejected=ok
+mutation fixture-truncated rejected=ok
+edge6 gpu run=ok (30 dispatches status4)
+mutation edge-corruption rejected=ok
+mutation rounding-half rejected=ok
+mutation q30-scale rejected=ok
+mutation sat-window rejected=ok
+mutation sat-sign rejected=ok
+mutation lap-centre-4x rejected=ok
+mutation periodic-x rejected=ok
+mutation periodic-y rejected=ok
+mutation buffer-slot rejected=ok
+mutation mul64-hi-term rejected=ok
+mutation sat-count-double rejected=ok
+mutation params-lo-hi rejected=ok
+mutation round-independence rejected=ok
+mutation count-agreement rejected=ok
+mutation host-out-buffer-index rejected=ok
+mutation host-binding-swap rejected=ok
+mutation host-params-length rejected=ok
+mutation host-count-mismatch rejected=ok
+mutation host-mtlsize-abi rejected=ok
+mutation host-count0 rejected=ok
+mutation host-sat-reset rejected=ok
+mutation host-status4 rejected=ok
+mutation host-nserror rejected=ok
+mutation host-encoder-offset rejected=ok
+mutation host-readback-overrun rejected=ok
+guard-solo: wide dispatch(count+64) WITH gid guard = GREEN ok
+guard-solo: wide dispatch(count+64) WITHOUT gid guard = RED ok
+q30_wave_metal gate: frozen138 GPU scalar=neon=metal offsets alias reps custody guard, shader-teeth=13 host-teeth=11 + guard-solo wide-dispatch, all red=ok
