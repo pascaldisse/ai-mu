@@ -93,7 +93,7 @@ tooth sat-dropped     '/\[MUT:sat\]/d'                             "$work/t3.fld
 tooth flro-steps-zero 's|str x28, \[x9, #16\].*|str xzr, [x9, #16]|' "$work/t2.fldj" "$ref2"
 tooth flro-sat-zero   's|str x19, \[x9, #24\].*|str xzr, [x9, #24]|' "$work/t3.fldj" "$ref3"
 tooth flro-magic-be   's|movk w10, #0x4F52, lsl #16.*|movz w10, #0x524F\n    movk w10, #0x464C, lsl #16|' "$work/t1.fldj" "$(od -An -tx1 "$work/t1.flro" | tr -s ' ')"
-tooth out-alias-cur   's|mov x3, x27 .*\[MUT:alias\].*|mov x3, x25|' "$work/t2.fldj" "$ref2"
+tooth out-alias-cur   's|ldr x27, \[sp, #176\].*\[MUT:alias\].*|mov x27, x25|' "$work/t2.fldj" "$ref2"
 
 # ---- A8b: arena 硬碼零(Chandi blocker 再現をそのまま緑化)----
 # 129x128 = 16512 胞 > 旧固定 16384。引数 16512 で rc=0・出力 32+4n。引数未満 = rc=8。

@@ -190,7 +190,22 @@ impl Journal {
             range: f32::from_bits(rd_u32(&mut c)?),
         };
         let n_slots = rd_u32(&mut c)? as usize;
+        // native fieldrun と同一の wire 契約: n_slots < 2 = malformed(slot0/1 は予約)。
+        // panic に非ず回復可能 Err で返す(入力不備 = bug に非ず)。
+        if n_slots < crate::store::RESERVED_SLOTS {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("journal: n_slots {} < {}", n_slots, crate::store::RESERVED_SLOTS),
+            ));
+        }
         let cfg = FieldConfig { width: w, height: h };
+        // d = w*h と n_slots*d の checked 積(usize 溢 = 拒絶、割当前)。
+        let d = w.checked_mul(h).ok_or_else(|| {
+            io::Error::new(io::ErrorKind::InvalidData, "journal: w*h overflow")
+        })?;
+        n_slots.checked_mul(d).ok_or_else(|| {
+            io::Error::new(io::ErrorKind::InvalidData, "journal: n_slots*d overflow")
+        })?;
 
         let mut ops = Vec::new();
         while c.position() < bytes.len() as u64 {

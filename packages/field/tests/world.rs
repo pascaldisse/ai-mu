@@ -223,3 +223,22 @@ fn try_replay_of_malformed_journal_returns_err() {
         Some(ApplyError::WriteRawLen { slot: 3, got: 3, want: cfg().d() })
     );
 }
+
+/// atom9 互換: WriteRaw の slot id が n_slots 以上 = INPUT 誤り。
+/// index OOB panic に非ず、回復可能 Err で返り、World は使用可のまま。
+#[test]
+fn write_raw_slot_out_of_range_returns_err_not_panic() {
+    let mut w = World::new(cfg(), WaveParams::default(), 4);
+    let d = w.cfg.d();
+    let oob = Op::WriteRaw { slot: 4, data_bits: vec![0u32; d] };
+    assert_eq!(
+        w.try_apply(&oob),
+        Err(ApplyError::SlotOutOfRange { slot: 4, n_slots: 4 }),
+        "slot >= n_slots must be a recoverable Err"
+    );
+    let far = Op::WriteRaw { slot: u32::MAX, data_bits: vec![0u32; d] };
+    assert!(matches!(w.try_apply(&far), Err(ApplyError::SlotOutOfRange { .. })));
+    // 境界 = 最終合法 slot は受理。長さ検査は範囲検査より先(既存契約)。
+    assert!(w.try_apply(&Op::WriteRaw { slot: 3, data_bits: vec![0u32; d] }).is_ok());
+    assert!(RESERVED_SLOTS <= 4);
+}

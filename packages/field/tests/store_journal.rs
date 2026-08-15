@@ -265,3 +265,23 @@ fn journal_identical_sequences_byte_identical_files() {
     let _ = std::fs::remove_file(&p1);
     let _ = std::fs::remove_file(&p2);
 }
+
+/// atom9 互換: header n_slots が 0/1 の journal = malformed。
+/// read_all は panic せず InvalidData Err。native fieldrun の rc=9 と同一判定。
+#[test]
+fn read_all_rejects_n_slots_below_reserved() {
+    let dir = fresh_dir("nslots");
+    let (cfg, params) = sample_cfg_params();
+    for bad in [0u32, 1u32] {
+        let path = jpath(&dir, &format!("nslots_{bad}.fldj"));
+        let mut j = Journal::create(&path, cfg, &params, 2).unwrap();
+        j.append(&Op::Step { count: 1 });
+        j.flush().unwrap();
+        // header off44 = n_slots(u32 LE)を破壊 = wire malformed
+        let mut bytes = std::fs::read(&path).unwrap();
+        bytes[44..48].copy_from_slice(&bad.to_le_bytes());
+        std::fs::write(&path, &bytes).unwrap();
+        let e = Journal::read_all(&path).expect_err("n_slots < 2 must be Err");
+        assert_eq!(e.kind(), std::io::ErrorKind::InvalidData, "{bad}: {e}");
+    }
+}
